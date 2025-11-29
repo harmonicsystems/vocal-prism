@@ -87,27 +87,27 @@ export default function PrismPage() {
     <div className="min-h-screen bg-cream-100">
       {/* Header */}
       <header className="border-b border-carbon-200 bg-white sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
           <Link
             to="/"
-            className="flex items-center gap-2 text-carbon-500 hover:text-carbon-800 transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 text-carbon-500 hover:text-carbon-800 active:text-carbon-900 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">Back</span>
+            <span className="text-xs sm:text-sm">Back</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <PrismIcon className="w-5 h-5 text-carbon-400" />
-            <span className="font-mono text-sm text-carbon-600">{input.f0Formatted} Hz</span>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <PrismIcon className="w-4 h-4 sm:w-5 sm:h-5 text-carbon-400" />
+            <span className="font-mono text-xs sm:text-sm text-carbon-600">{input.f0Formatted} Hz</span>
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Hero Voice Card */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-4 sm:mb-8"
         >
           <VoiceCard
             f0={input.f0}
@@ -127,9 +127,9 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="mb-8 p-4 bg-white border border-carbon-200 rounded-lg"
+          className="mb-4 sm:mb-8 p-3 sm:p-4 bg-white border border-carbon-200 rounded-lg"
         >
-          <p className="text-carbon-600 leading-relaxed">{narrative.medium}</p>
+          <p className="text-sm sm:text-base text-carbon-600 leading-relaxed">{narrative.medium}</p>
         </motion.section>
 
         {/* Your Scale */}
@@ -137,10 +137,10 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="mb-8"
+          className="mb-4 sm:mb-8"
         >
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4 flex items-center gap-2">
-            <span className="font-mono text-xs text-carbon-300">00</span>
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
+            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">00</span>
             Your Personalized Scale
           </h2>
           <div className="module">
@@ -155,14 +155,14 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.25 }}
-          className="mb-8"
+          className="mb-4 sm:mb-8"
         >
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4 flex items-center gap-2">
-            <span className="font-mono text-xs text-carbon-300">01</span>
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
+            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">01</span>
             Your Scale on Piano
           </h2>
-          <div className="module">
-            <div className="module-body">
+          <div className="module overflow-x-auto">
+            <div className="module-body min-w-[500px] sm:min-w-0">
               <PianoKeyboard
                 scale={scale}
                 startOctave={Math.floor(input.f0 < 200 ? 2 : 3)}
@@ -177,13 +177,13 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.28 }}
-          className="mb-8"
+          className="mb-4 sm:mb-8"
         >
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4 flex items-center gap-2">
-            <span className="font-mono text-xs text-carbon-300">02</span>
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
+            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">02</span>
             Staff Notation
           </h2>
-          <div className="module">
+          <div className="module overflow-x-auto">
             <div className="module-body">
               <StaffNotation
                 scale={scale}
@@ -198,18 +198,18 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="mb-8"
+          className="mb-4 sm:mb-8"
         >
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4 flex items-center gap-2">
-            <span className="font-mono text-xs text-carbon-300">03</span>
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
+            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">03</span>
             Hear Your Frequencies
           </h2>
           <DroneMixer scale={scale} f0={input.f0} />
         </motion.section>
 
         {/* Framework Sections */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4">
+        <section className="space-y-3 sm:space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4">
             Your Voice Across History
           </h2>
 
@@ -498,10 +498,10 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="mt-8"
+          className="mt-4 sm:mt-8"
         >
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4 flex items-center gap-2">
-            <span className="font-mono text-xs text-carbon-300">06</span>
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
+            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">06</span>
             Compare Tuning Standards
           </h2>
           <TuningSelector f0={input.f0} />
@@ -512,25 +512,25 @@ export default function PrismPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.65 }}
-          className="mt-8"
+          className="mt-4 sm:mt-8"
         >
-          <h2 className="text-lg font-semibold text-carbon-800 mb-4 flex items-center gap-2">
-            <span className="font-mono text-xs text-carbon-300">07</span>
+          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
+            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">07</span>
             Verify the Math
           </h2>
           <MathVerification f0={input.f0} />
         </motion.section>
 
         {/* Footer */}
-        <footer className="mt-12 pt-8 border-t border-carbon-200 text-center">
-          <p className="text-sm text-carbon-400">
+        <footer className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-carbon-200 text-center pb-8">
+          <p className="text-xs sm:text-sm text-carbon-400">
             Physics, not mysticism. Your voice, contextualized.
           </p>
           <Link
             to="/"
-            className="inline-flex items-center gap-2 mt-4 text-sm text-carbon-500 hover:text-carbon-800"
+            className="inline-flex items-center gap-1.5 sm:gap-2 mt-3 sm:mt-4 text-xs sm:text-sm text-carbon-500 hover:text-carbon-800 active:text-carbon-900"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4" />
             Explore other frequencies
           </Link>
         </footer>

@@ -28,7 +28,7 @@ export default function ShrutiScale({ shrutiData, f0 = 165 }) {
   const { scale, ragas, system } = shrutiData;
 
   // Initialize audio context
-  const initAudio = useCallback(() => {
+  const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       masterGainRef.current = audioContextRef.current.createGain();
@@ -36,14 +36,14 @@ export default function ShrutiScale({ shrutiData, f0 = 165 }) {
       masterGainRef.current.connect(audioContextRef.current.destination);
     }
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+      await audioContextRef.current.resume();
     }
     return audioContextRef.current;
   }, []);
 
   // Play a single shruti tone
-  const playShruti = useCallback((shruti, duration = 0.8) => {
-    const ctx = initAudio();
+  const playShruti = useCallback(async (shruti, duration = 0.8) => {
+    const ctx = await initAudio();
     const hz = shruti.hz;
 
     // Stop any existing tone for this shruti
@@ -82,8 +82,8 @@ export default function ShrutiScale({ shrutiData, f0 = 165 }) {
   }, [initAudio]);
 
   // Toggle Sa drone
-  const toggleDrone = useCallback(() => {
-    const ctx = initAudio();
+  const toggleDrone = useCallback(async () => {
+    const ctx = await initAudio();
 
     if (isDronePlaying && droneOscRef.current) {
       droneGainRef.current.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);

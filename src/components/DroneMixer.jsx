@@ -162,25 +162,25 @@ const CHROMATIC_PRESETS = [
   { id: 'tritone', label: 'TT', voices: [0, 6], desc: 'Tritone (diabolus)' },
 ];
 
-// Fader component
-function Fader({ value, onChange, isActive, onToggle, label, subLabel, hz, cents }) {
+// Fader component - mobile-optimized with horizontal layout on small screens
+function Fader({ value, onChange, isActive, onToggle, label, subLabel, hz, cents, compact = false }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      {/* Hz display */}
-      <div className="text-[9px] text-carbon-500 font-mono h-4 flex items-center">
-        {hz?.toFixed(1)}
+    <div className={`flex flex-col items-center gap-0.5 sm:gap-1 ${compact ? 'min-w-[32px]' : ''}`}>
+      {/* Hz display - hidden on mobile in compact mode */}
+      <div className={`text-[8px] sm:text-[9px] text-carbon-500 font-mono h-3 sm:h-4 flex items-center ${compact ? 'hidden sm:flex' : ''}`}>
+        {hz?.toFixed(0)}
       </div>
 
-      {/* Cents indicator */}
+      {/* Cents indicator - hidden on very small screens */}
       {cents !== undefined && cents !== null && (
-        <div className={`text-[8px] font-mono h-3 ${Math.abs(cents) < 5 ? 'text-carbon-500' : 'text-signal-amber'}`}>
+        <div className={`text-[7px] sm:text-[8px] font-mono h-2.5 sm:h-3 hidden sm:block ${Math.abs(cents) < 5 ? 'text-carbon-500' : 'text-signal-amber'}`}>
           {cents >= 0 ? '+' : ''}{cents}¢
         </div>
       )}
 
-      {/* Fader track */}
-      <div className="relative h-20 w-6 flex flex-col items-center">
-        <div className="absolute inset-x-0 mx-auto w-1 h-full bg-carbon-700 rounded-full" />
+      {/* Fader track - shorter on mobile */}
+      <div className="relative h-12 sm:h-20 w-5 sm:w-6 flex flex-col items-center">
+        <div className="absolute inset-x-0 mx-auto w-0.5 sm:w-1 h-full bg-carbon-700 rounded-full" />
         <input
           type="range"
           min="0"
@@ -188,11 +188,13 @@ function Fader({ value, onChange, isActive, onToggle, label, subLabel, hz, cents
           step="0.01"
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="absolute h-full w-6 appearance-none bg-transparent cursor-pointer
+          className="absolute h-full w-5 sm:w-6 appearance-none bg-transparent cursor-pointer touch-none
                      [writing-mode:vertical-lr] [direction:rtl]
                      [&::-webkit-slider-thumb]:appearance-none
-                     [&::-webkit-slider-thumb]:w-6
-                     [&::-webkit-slider-thumb]:h-3
+                     [&::-webkit-slider-thumb]:w-5
+                     [&::-webkit-slider-thumb]:sm:w-6
+                     [&::-webkit-slider-thumb]:h-2.5
+                     [&::-webkit-slider-thumb]:sm:h-3
                      [&::-webkit-slider-thumb]:rounded
                      [&::-webkit-slider-thumb]:bg-carbon-300
                      [&::-webkit-slider-thumb]:border
@@ -203,29 +205,29 @@ function Fader({ value, onChange, isActive, onToggle, label, subLabel, hz, cents
         />
         {/* Level indicator */}
         <div
-          className={`absolute bottom-0 w-1 rounded-full transition-all duration-100 ${
+          className={`absolute bottom-0 w-0.5 sm:w-1 rounded-full transition-all duration-100 ${
             isActive ? 'bg-signal-orange' : 'bg-carbon-600'
           }`}
           style={{ height: `${value * 100}%` }}
         />
       </div>
 
-      {/* Toggle button */}
+      {/* Toggle button - touch-friendly size */}
       <button
         onClick={onToggle}
         className={`
-          w-8 h-8 rounded text-[10px] font-bold transition-all border
+          w-7 h-7 sm:w-8 sm:h-8 rounded text-[9px] sm:text-[10px] font-bold transition-all border
           ${isActive
             ? 'bg-carbon-700 border-signal-orange text-signal-orange'
-            : 'bg-carbon-800 border-carbon-600 text-carbon-500 hover:border-carbon-400'}
+            : 'bg-carbon-800 border-carbon-600 text-carbon-500 hover:border-carbon-400 active:border-carbon-300'}
         `}
       >
         {label}
       </button>
 
-      {/* Sub label */}
+      {/* Sub label - hidden on mobile */}
       {subLabel && (
-        <div className="text-[8px] text-carbon-500 h-3 truncate max-w-[40px] text-center">{subLabel}</div>
+        <div className="hidden sm:block text-[8px] text-carbon-500 h-3 truncate max-w-[40px] text-center">{subLabel}</div>
       )}
     </div>
   );
@@ -305,7 +307,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   }, [mode, scale, labelMode]);
 
   // Initialize audio context
-  const initAudio = useCallback(() => {
+  const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       masterGainRef.current = audioContextRef.current.createGain();
@@ -313,7 +315,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       masterGainRef.current.connect(audioContextRef.current.destination);
     }
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+      await audioContextRef.current.resume();
     }
     return audioContextRef.current;
   }, [masterVolume]);
@@ -373,12 +375,12 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   }, [stopOscillator]);
 
   // Toggle play
-  const togglePlay = useCallback(() => {
+  const togglePlay = useCallback(async () => {
     if (isPlaying) {
       stopAll();
       setIsPlaying(false);
     } else {
-      initAudio();
+      await initAudio();
       activeVoices.forEach(voiceId => {
         const freq = getFrequency(voiceId);
         createOscillator(voiceId, freq, volumes[voiceId]);
@@ -388,22 +390,28 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   }, [isPlaying, activeVoices, volumes, initAudio, getFrequency, createOscillator, stopAll]);
 
   // Toggle voice
-  const toggleVoice = useCallback((voiceId) => {
-    setActiveVoices(prev => {
-      const next = new Set(prev);
-      if (next.has(voiceId)) {
+  const toggleVoice = useCallback(async (voiceId) => {
+    const isCurrentlyActive = activeVoices.has(voiceId);
+
+    if (isCurrentlyActive) {
+      setActiveVoices(prev => {
+        const next = new Set(prev);
         next.delete(voiceId);
-        if (isPlaying) stopOscillator(voiceId);
-      } else {
+        return next;
+      });
+      if (isPlaying) stopOscillator(voiceId);
+    } else {
+      setActiveVoices(prev => {
+        const next = new Set(prev);
         next.add(voiceId);
-        if (isPlaying) {
-          initAudio();
-          createOscillator(voiceId, getFrequency(voiceId), volumes[voiceId]);
-        }
+        return next;
+      });
+      if (isPlaying) {
+        await initAudio();
+        createOscillator(voiceId, getFrequency(voiceId), volumes[voiceId]);
       }
-      return next;
-    });
-  }, [isPlaying, volumes, initAudio, getFrequency, createOscillator, stopOscillator, setActiveVoices]);
+    }
+  }, [isPlaying, activeVoices, volumes, initAudio, getFrequency, createOscillator, stopOscillator, setActiveVoices]);
 
   // Update voice volume
   const updateVoiceVolume = useCallback((voiceId, value) => {
@@ -499,24 +507,24 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   };
 
   return (
-    <div className="bg-carbon-900 rounded-lg p-4 text-white font-mono">
+    <div className="bg-carbon-900 rounded-lg p-3 sm:p-4 text-white font-mono">
       {/* Historical Context Selector */}
-      <div className="mb-4">
-        <div className="text-[10px] text-carbon-500 uppercase tracking-wider mb-2">Historical Context</div>
+      <div className="mb-3 sm:mb-4">
+        <div className="text-[9px] sm:text-[10px] text-carbon-500 uppercase tracking-wider mb-1.5 sm:mb-2">Historical Context</div>
         <div className="flex flex-wrap gap-1">
           {Object.entries(HISTORICAL_CONTEXTS).map(([key, ctx]) => (
             <button
               key={key}
               onClick={() => setHistoricalContext(key)}
               className={`
-                px-2.5 py-1 text-[10px] rounded border transition-all
+                px-2 sm:px-2.5 py-1 text-[9px] sm:text-[10px] rounded border transition-all
                 ${historicalContext === key
                   ? `${getContextColorClass(key, 'bg')} ${getContextColorClass(key, 'border')} ${getContextColorClass(key, 'text')}`
-                  : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
+                  : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500 active:border-carbon-400'}
               `}
             >
               {ctx.label}
-              {ctx.century && <span className="ml-1 opacity-60">({ctx.century})</span>}
+              <span className="hidden sm:inline">{ctx.century && <span className="ml-1 opacity-60">({ctx.century})</span>}</span>
             </button>
           ))}
         </div>
@@ -539,35 +547,35 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       </AnimatePresence>
 
       {/* Header row */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {/* Mode toggle */}
           <div className="flex rounded overflow-hidden border border-carbon-600">
             <button
               onClick={() => switchMode('scale')}
-              className={`px-3 py-1.5 text-xs transition-all ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs transition-all ${
                 mode === 'scale'
                   ? 'bg-signal-orange text-carbon-900'
-                  : 'bg-carbon-800 text-carbon-400 hover:text-carbon-200'
+                  : 'bg-carbon-800 text-carbon-400 hover:text-carbon-200 active:text-carbon-100'
               }`}
             >
               Scale
             </button>
             <button
               onClick={() => switchMode('chromatic')}
-              className={`px-3 py-1.5 text-xs transition-all ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs transition-all ${
                 mode === 'chromatic'
                   ? 'bg-signal-coral text-carbon-900'
-                  : 'bg-carbon-800 text-carbon-400 hover:text-carbon-200'
+                  : 'bg-carbon-800 text-carbon-400 hover:text-carbon-200 active:text-carbon-100'
               }`}
             >
               Chromatic
             </button>
           </div>
 
-          {/* Label mode (scale only) */}
+          {/* Label mode (scale only) - hidden on mobile */}
           {mode === 'scale' && (
-            <div className="flex gap-1">
+            <div className="hidden sm:flex gap-1">
               {LABEL_MODES.map(lm => (
                 <button
                   key={lm.id}
@@ -586,21 +594,22 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         </div>
 
         {/* f0 display + power */}
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-carbon-500">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="text-[10px] sm:text-xs text-carbon-500">
             f0: <span className="text-signal-orange">{f0} Hz</span>
           </div>
           <button
             onClick={togglePlay}
             className={`
-              w-14 h-8 rounded flex items-center justify-center gap-1
-              transition-all duration-200 border font-bold text-xs
+              w-12 sm:w-14 h-7 sm:h-8 rounded flex items-center justify-center gap-1
+              transition-all duration-200 border font-bold text-[10px] sm:text-xs
               ${isPlaying
                 ? 'bg-signal-orange border-signal-orange text-carbon-900'
-                : 'bg-carbon-800 border-carbon-600 text-carbon-400 hover:border-carbon-400'}
+                : 'bg-carbon-800 border-carbon-600 text-carbon-400 hover:border-carbon-400 active:border-carbon-300'}
             `}
           >
-            {isPlaying ? '■ STOP' : '▶ PLAY'}
+            {isPlaying ? '■' : '▶'}
+            <span className="hidden sm:inline">{isPlaying ? 'STOP' : 'PLAY'}</span>
           </button>
         </div>
       </div>
@@ -708,8 +717,8 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       </div>
 
       {/* Mixer faders */}
-      <div className="bg-carbon-800 rounded-lg p-3 mb-4">
-        <div className={`flex justify-between gap-0.5 ${mode === 'chromatic' ? 'overflow-x-auto pb-2' : ''}`}>
+      <div className="bg-carbon-800 rounded-lg p-2 sm:p-3 mb-3 sm:mb-4">
+        <div className={`flex justify-between gap-0 sm:gap-0.5 ${mode === 'chromatic' ? 'overflow-x-auto pb-2 -mx-1 px-1' : ''}`}>
           {voices.map(voiceId => {
             const freq = getFrequency(voiceId);
             const label = getLabel(voiceId);
@@ -727,6 +736,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
                 subLabel={mode === 'scale' ? null : subLabel}
                 hz={freq}
                 cents={cents}
+                compact={mode === 'chromatic'}
               />
             );
           })}
@@ -734,20 +744,20 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       </div>
 
       {/* Wave type + Master */}
-      <div className="flex items-end gap-4">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
         {/* Waveform */}
         <div className="flex-1">
-          <div className="text-[10px] text-carbon-500 mb-1.5 uppercase tracking-wider">Wave</div>
-          <div className="flex gap-1.5">
+          <div className="text-[9px] sm:text-[10px] text-carbon-500 mb-1 sm:mb-1.5 uppercase tracking-wider">Wave</div>
+          <div className="flex gap-1 sm:gap-1.5">
             {WAVE_TYPES.map(wave => (
               <button
                 key={wave.type}
                 onClick={() => setWaveType(wave.type)}
                 className={`
-                  px-3 py-1.5 text-xs rounded border transition-all flex-1
+                  px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs rounded border transition-all flex-1
                   ${waveType === wave.type
                     ? 'bg-carbon-700 border-signal-coral text-signal-coral'
-                    : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
+                    : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500 active:border-carbon-400'}
                 `}
                 title={wave.desc}
               >
@@ -758,10 +768,10 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         </div>
 
         {/* Master volume */}
-        <div className="w-32">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] text-carbon-500 uppercase tracking-wider">Master</span>
-            <span className="text-[10px] text-carbon-400">{Math.round(masterVolume * 100)}%</span>
+        <div className="w-full sm:w-32">
+          <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+            <span className="text-[9px] sm:text-[10px] text-carbon-500 uppercase tracking-wider">Master</span>
+            <span className="text-[9px] sm:text-[10px] text-carbon-400">{Math.round(masterVolume * 100)}%</span>
           </div>
           <input
             type="range"
@@ -772,8 +782,10 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
             onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
             className="w-full h-2 bg-carbon-700 rounded-full appearance-none cursor-pointer
                        [&::-webkit-slider-thumb]:appearance-none
-                       [&::-webkit-slider-thumb]:w-4
-                       [&::-webkit-slider-thumb]:h-4
+                       [&::-webkit-slider-thumb]:w-5
+                       [&::-webkit-slider-thumb]:h-5
+                       [&::-webkit-slider-thumb]:sm:w-4
+                       [&::-webkit-slider-thumb]:sm:h-4
                        [&::-webkit-slider-thumb]:rounded-full
                        [&::-webkit-slider-thumb]:bg-signal-orange
                        [&::-webkit-slider-thumb]:cursor-pointer
@@ -790,13 +802,13 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="mt-4 pt-3 border-t border-carbon-700"
+            className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-carbon-700"
           >
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-signal-orange animate-pulse" />
-              <span className="text-[10px] text-carbon-400">
+              <div className="w-2 h-2 rounded-full bg-signal-orange animate-pulse flex-shrink-0" />
+              <span className="text-[9px] sm:text-[10px] text-carbon-400 truncate">
                 {Array.from(activeVoices).sort((a, b) => a - b).map(id =>
-                  `${getLabel(id)} (${getFrequency(id).toFixed(1)} Hz)`
+                  `${getLabel(id)}`
                 ).join(' + ')}
               </span>
             </div>
@@ -805,16 +817,16 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       </AnimatePresence>
 
       {/* Mode description */}
-      <div className="mt-4 pt-3 border-t border-carbon-700">
-        <p className="text-[10px] text-carbon-500 leading-relaxed">
+      <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-carbon-700">
+        <p className="text-[9px] sm:text-[10px] text-carbon-500 leading-relaxed">
           {mode === 'scale'
-            ? `Scale: Just intonation from Sa (${f0} Hz). Pure ratios — hear the difference from equal temperament.`
-            : `Chromatic: 12 equal-tempered semitones from ${f0} Hz. Build any interval or chord.`
+            ? `Scale: Just intonation from Sa (${f0} Hz). Pure ratios.`
+            : `Chromatic: 12 equal-tempered semitones from ${f0} Hz.`
           }
         </p>
         {historicalContext !== 'none' && (
-          <p className={`text-[9px] mt-1 ${getContextColorClass(historicalContext, 'text')}`}>
-            Context: {contextData.label} {contextData.century && `(${contextData.century})`}
+          <p className={`text-[8px] sm:text-[9px] mt-1 ${getContextColorClass(historicalContext, 'text')}`}>
+            Context: {contextData.label}
           </p>
         )}
       </div>

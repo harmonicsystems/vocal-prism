@@ -138,7 +138,7 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   const getShrutiByNumber = (num) => scale.find(s => s.shruti === num);
 
   // Initialize audio context
-  const initAudio = useCallback(() => {
+  const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       masterGainRef.current = audioContextRef.current.createGain();
@@ -146,14 +146,14 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
       masterGainRef.current.connect(audioContextRef.current.destination);
     }
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+      await audioContextRef.current.resume();
     }
     return audioContextRef.current;
   }, [masterVolume]);
 
   // Start an oscillator for a shruti
-  const startOscillator = useCallback((shrutiNum) => {
-    const ctx = initAudio();
+  const startOscillator = useCallback(async (shrutiNum) => {
+    const ctx = await initAudio();
     const shruti = getShrutiByNumber(shrutiNum);
     if (!shruti || oscillatorsRef.current.has(shrutiNum)) return;
 
@@ -208,9 +208,11 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   }, [isPlaying, startOscillator, stopOscillator]);
 
   // Start all active shrutis
-  const startAll = useCallback(() => {
-    initAudio();
-    activeShrutis.forEach(num => startOscillator(num));
+  const startAll = useCallback(async () => {
+    await initAudio();
+    for (const num of activeShrutis) {
+      await startOscillator(num);
+    }
     setIsPlaying(true);
   }, [initAudio, activeShrutis, startOscillator]);
 
@@ -428,11 +430,11 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
                 const isCurrentlyPlaying = isPlaying && tuning.enabled;
 
                 return (
-                  <div key={svara.name} className="flex items-center gap-3">
+                  <div key={svara.name} className="flex items-center gap-2 sm:gap-3">
                     {/* Toggle button */}
                     <motion.button
                       onClick={() => toggleTunedSvara(svara.name)}
-                      className={`w-14 py-1.5 text-xs rounded border font-bold transition-all
+                      className={`w-11 sm:w-14 py-1.5 text-[10px] sm:text-xs rounded border font-bold transition-all flex-shrink-0
                         ${tuning.enabled
                           ? `bg-${svara.color}-500/30 border-${svara.color}-400 text-${svara.color}-300`
                           : 'bg-carbon-900 border-carbon-700 text-carbon-500 hover:border-carbon-500'}`}
@@ -448,7 +450,7 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
                     </motion.button>
 
                     {/* Shruti slider */}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <input
                           type="range"
@@ -459,8 +461,8 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
                           className={`flex-1 h-2 rounded-full appearance-none cursor-pointer
                             ${tuning.enabled ? `bg-${svara.color}-900` : 'bg-carbon-700'}
                             [&::-webkit-slider-thumb]:appearance-none
-                            [&::-webkit-slider-thumb]:w-4
-                            [&::-webkit-slider-thumb]:h-4
+                            [&::-webkit-slider-thumb]:w-5
+                            [&::-webkit-slider-thumb]:h-5
                             [&::-webkit-slider-thumb]:rounded-full
                             [&::-webkit-slider-thumb]:cursor-pointer
                             ${tuning.enabled
@@ -468,8 +470,8 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
                               : '[&::-webkit-slider-thumb]:bg-carbon-500'}`}
                         />
                       </div>
-                      {/* Shruti labels */}
-                      <div className="flex justify-between mt-0.5">
+                      {/* Shruti labels - hidden on mobile, show short labels */}
+                      <div className="hidden sm:flex justify-between mt-0.5">
                         {svara.labels.map((label, i) => (
                           <button
                             key={i}
@@ -485,12 +487,16 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
                           </button>
                         ))}
                       </div>
+                      {/* Mobile: show current position only */}
+                      <div className="sm:hidden text-[8px] text-carbon-500 mt-0.5 text-center">
+                        {svara.labels[shrutiIndex]}
+                      </div>
                     </div>
 
                     {/* Hz display */}
-                    <div className={`text-right w-20 ${tuning.enabled ? `text-${svara.color}-400` : 'text-carbon-600'}`}>
-                      <div className="text-xs font-medium">{shruti?.hzFormatted || '—'}</div>
-                      <div className="text-[8px]">{shruti?.cents || 0}¢</div>
+                    <div className={`text-right w-14 sm:w-20 flex-shrink-0 ${tuning.enabled ? `text-${svara.color}-400` : 'text-carbon-600'}`}>
+                      <div className="text-[10px] sm:text-xs font-medium">{shruti?.hzFormatted || '—'}</div>
+                      <div className="text-[7px] sm:text-[8px]">{shruti?.cents || 0}¢</div>
                     </div>
                   </div>
                 );

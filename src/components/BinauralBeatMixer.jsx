@@ -120,7 +120,7 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
   const currentBrainwave = BRAINWAVE_STATES[selectedState];
 
   // Initialize audio context
-  const initAudio = useCallback(() => {
+  const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -145,15 +145,15 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
     }
 
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+      await audioContextRef.current.resume();
     }
 
     return audioContextRef.current;
   }, [volume]);
 
   // Start binaural beat
-  const startBeat = useCallback(() => {
-    const ctx = initAudio();
+  const startBeat = useCallback(async () => {
+    const ctx = await initAudio();
     const { left, right } = getFrequencies();
 
     // Create left oscillator
@@ -292,24 +292,25 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
         <div className="text-[10px] text-carbon-500 uppercase tracking-wider mb-2">
           Target Brainwave State
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
           {Object.values(BRAINWAVE_STATES).map(state => (
             <button
               key={state.id}
               onClick={() => selectState(state.id)}
               className={`
-                px-3 py-2 text-xs rounded border transition-all
+                px-2 sm:px-3 py-2 text-xs rounded border transition-all
                 ${selectedState === state.id
                   ? `${getColorClass('bg')} ${getColorClass('border')} ${getColorClass('text')}`
                   : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
               `}
             >
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-center gap-1">
                 <span>{state.icon}</span>
-                <span>{state.name}</span>
+                <span className="hidden sm:inline">{state.name}</span>
+                <span className="sm:hidden text-[10px]">{state.id.charAt(0).toUpperCase()}</span>
               </div>
-              <div className="text-[9px] opacity-70 mt-0.5">
-                {state.range[0]}-{state.range[1]} Hz
+              <div className="text-[8px] sm:text-[9px] opacity-70 mt-0.5">
+                {state.range[0]}-{state.range[1]}
               </div>
             </button>
           ))}
@@ -330,11 +331,11 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
 
       {/* Venn Diagram Visualization */}
       <div className="mb-4 relative">
-        <div className="bg-carbon-800 rounded-lg p-6 flex items-center justify-center min-h-[180px]">
+        <div className="bg-carbon-800 rounded-lg p-3 sm:p-6 flex items-center justify-center min-h-[140px] sm:min-h-[180px]">
           {/* Left circle */}
           <div className="relative">
             <motion.div
-              className="w-28 h-28 rounded-full bg-blue-500/20 border-2 border-blue-400 flex items-center justify-center"
+              className="w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-blue-500/20 border-2 border-blue-400 flex items-center justify-center"
               animate={{
                 scale: isPlaying ? [1, 1.03, 1] : 1,
               }}
@@ -344,17 +345,17 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
               }}
             >
               <div className="text-center">
-                <div className="text-[10px] text-blue-300 uppercase tracking-wider">Left Ear</div>
-                <div className="text-xl font-bold text-blue-400 mt-1">{frequencies.left.toFixed(1)}</div>
-                <div className="text-[10px] text-blue-300">Hz</div>
+                <div className="text-[8px] sm:text-[10px] text-blue-300 uppercase tracking-wider">Left</div>
+                <div className="text-base sm:text-xl font-bold text-blue-400 mt-0.5 sm:mt-1">{frequencies.left.toFixed(1)}</div>
+                <div className="text-[8px] sm:text-[10px] text-blue-300">Hz</div>
               </div>
             </motion.div>
           </div>
 
           {/* Center - Beat frequency (not overlapping, between the circles) */}
-          <div className="mx-6 z-10">
+          <div className="mx-2 sm:mx-6 z-10">
             <motion.div
-              className={`w-24 h-24 rounded-full flex items-center justify-center
+              className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center
                 ${getColorClass('bg')} border-2 ${getColorClass('border')}
                 backdrop-blur-sm shadow-lg`}
               animate={{
@@ -367,11 +368,11 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
               }}
             >
               <div className="text-center">
-                <div className="text-[9px] text-carbon-400 uppercase tracking-wider">Perceived</div>
-                <div className={`text-2xl font-bold ${getColorClass('text')}`}>
+                <div className="text-[7px] sm:text-[9px] text-carbon-400 uppercase tracking-wider">Beat</div>
+                <div className={`text-lg sm:text-2xl font-bold ${getColorClass('text')}`}>
                   {beatFrequency.toFixed(1)}
                 </div>
-                <div className="text-[10px] text-carbon-300">Hz beat</div>
+                <div className="text-[8px] sm:text-[10px] text-carbon-300">Hz</div>
               </div>
             </motion.div>
           </div>
@@ -379,7 +380,7 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
           {/* Right circle */}
           <div className="relative">
             <motion.div
-              className="w-28 h-28 rounded-full bg-red-500/20 border-2 border-red-400 flex items-center justify-center"
+              className="w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-red-500/20 border-2 border-red-400 flex items-center justify-center"
               animate={{
                 scale: isPlaying ? [1, 1.03, 1] : 1,
               }}
@@ -390,9 +391,9 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
               }}
             >
               <div className="text-center">
-                <div className="text-[10px] text-red-300 uppercase tracking-wider">Right Ear</div>
-                <div className="text-xl font-bold text-red-400 mt-1">{frequencies.right.toFixed(1)}</div>
-                <div className="text-[10px] text-red-300">Hz</div>
+                <div className="text-[8px] sm:text-[10px] text-red-300 uppercase tracking-wider">Right</div>
+                <div className="text-base sm:text-xl font-bold text-red-400 mt-0.5 sm:mt-1">{frequencies.right.toFixed(1)}</div>
+                <div className="text-[8px] sm:text-[10px] text-red-300">Hz</div>
               </div>
             </motion.div>
           </div>
