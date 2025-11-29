@@ -12,7 +12,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, subscribeToAudioState, forceUnlock } from '../utils/mobileAudio';
+import { createAndUnlockAudioContext, subscribeToAudioState } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Brainwave states with frequencies and descriptions
@@ -130,23 +130,24 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
   const frequencies = getFrequencies();
   const currentBrainwave = BRAINWAVE_STATES[selectedState];
 
-  // Initialize audio context - SYNCHRONOUS for mobile compatibility
+  // Initialize audio context - creates and unlocks in one step
   const initAudio = useCallback(() => {
-    // Try to unlock synchronously (critical for mobile!)
-    forceUnlock();
-
-    const ctx = getAudioContext();
+    // Create and unlock context (must happen in user gesture)
+    const ctx = createAndUnlockAudioContext();
 
     if (!ctx) {
       setAudioState('error');
       return null;
     }
 
-    // If context is suspended, needs user interaction
-    if (ctx.state === 'suspended') {
-      setAudioState('waiting');
-      return null;
-    }
+    // Check state after a tiny delay
+    setTimeout(() => {
+      if (ctx.state === 'running') {
+        setAudioState('running');
+      } else {
+        setAudioState('waiting');
+      }
+    }, 100);
 
     if (!audioContextRef.current || audioContextRef.current !== ctx) {
       audioContextRef.current = ctx;
@@ -171,7 +172,6 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
       rightPanRef.current.connect(masterGainRef.current);
     }
 
-    setAudioState('running');
     return ctx;
   }, [volume]);
 

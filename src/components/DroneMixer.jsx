@@ -13,7 +13,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, isAudioReady, subscribeToAudioState, forceUnlock } from '../utils/mobileAudio';
+import { createAndUnlockAudioContext, isAudioReady, subscribeToAudioState } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Historical context definitions
@@ -317,25 +317,25 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     return unsubscribe;
   }, [audioState]);
 
-  // Initialize audio context - SYNCHRONOUS for mobile compatibility
+  // Initialize audio context - creates and unlocks in one step
   const initAudio = useCallback(() => {
     try {
-      // Try to unlock synchronously (critical for mobile!)
-      forceUnlock();
-
-      // Get the context (now synchronous)
-      const ctx = getAudioContext();
+      // Create and unlock context (must happen in user gesture)
+      const ctx = createAndUnlockAudioContext();
 
       if (!ctx) {
         setAudioState('error');
         return null;
       }
 
-      // If context is suspended, it needs user interaction
-      if (ctx.state === 'suspended') {
-        setAudioState('waiting');
-        return null;
-      }
+      // Check state after a tiny delay (some browsers need this)
+      setTimeout(() => {
+        if (ctx.state === 'running') {
+          setAudioState('running');
+        } else {
+          setAudioState('waiting');
+        }
+      }, 100);
 
       // Store reference and set up master gain if needed
       if (!audioContextRef.current || audioContextRef.current !== ctx) {
@@ -345,7 +345,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         masterGainRef.current.connect(ctx.destination);
       }
 
-      setAudioState('running');
+      // Return context even if state is not yet 'running' - it might transition
       return ctx;
     } catch (err) {
       console.error('Audio init error:', err);
