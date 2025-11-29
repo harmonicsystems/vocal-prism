@@ -306,6 +306,15 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     }
   }, [mode, scale, labelMode]);
 
+  // Unlock audio on mobile by playing a silent buffer
+  const unlockAudio = useCallback((ctx) => {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  }, []);
+
   // Initialize audio context
   const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -317,8 +326,10 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     if (audioContextRef.current.state === 'suspended') {
       await audioContextRef.current.resume();
     }
+    // Play silent buffer to unlock mobile audio
+    unlockAudio(audioContextRef.current);
     return audioContextRef.current;
-  }, [masterVolume]);
+  }, [masterVolume, unlockAudio]);
 
   // Create oscillator
   const createOscillator = useCallback((voiceId, freq, volume) => {

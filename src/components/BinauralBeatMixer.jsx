@@ -119,6 +119,15 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
   const frequencies = getFrequencies();
   const currentBrainwave = BRAINWAVE_STATES[selectedState];
 
+  // Unlock audio on mobile by playing a silent buffer
+  const unlockAudio = useCallback((ctx) => {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  }, []);
+
   // Initialize audio context
   const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -148,8 +157,11 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
       await audioContextRef.current.resume();
     }
 
+    // Play silent buffer to unlock mobile audio
+    unlockAudio(audioContextRef.current);
+
     return audioContextRef.current;
-  }, [volume]);
+  }, [volume, unlockAudio]);
 
   // Start binaural beat
   const startBeat = useCallback(async () => {

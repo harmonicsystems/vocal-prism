@@ -137,6 +137,15 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   // Get shruti data by number
   const getShrutiByNumber = (num) => scale.find(s => s.shruti === num);
 
+  // Unlock audio on mobile by playing a silent buffer
+  const unlockAudio = useCallback((ctx) => {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  }, []);
+
   // Initialize audio context
   const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -148,8 +157,10 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
     if (audioContextRef.current.state === 'suspended') {
       await audioContextRef.current.resume();
     }
+    // Play silent buffer to unlock mobile audio
+    unlockAudio(audioContextRef.current);
     return audioContextRef.current;
-  }, [masterVolume]);
+  }, [masterVolume, unlockAudio]);
 
   // Start an oscillator for a shruti
   const startOscillator = useCallback(async (shrutiNum) => {
