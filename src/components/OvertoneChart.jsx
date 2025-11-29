@@ -5,7 +5,6 @@
  */
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
   const [showExtended, setShowExtended] = useState(false);
@@ -14,9 +13,20 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
   const displayCount = showExtended ? Math.min(maxHarmonics, overtones.length) : 8;
   const displayOvertones = overtones.slice(0, displayCount);
   const maxHz = displayOvertones[displayOvertones.length - 1]?.hz || 1000;
+  const minHz = displayOvertones[0]?.hz || 100;
 
   // Harmonics that are notably "out of tune" with 12-TET
   const outOfTuneHarmonics = [7, 11, 13, 14];
+
+  // Chart dimensions
+  const chartHeight = 160;
+  const chartWidth = displayCount * 45 + 80;
+  const barWidth = 30;
+  const barGap = 15;
+  const leftMargin = 55;
+  const bottomY = 150;
+  const topY = 20;
+  const barAreaHeight = bottomY - topY;
 
   return (
     <div className="space-y-4">
@@ -53,103 +63,154 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
       </div>
 
       {viewMode === 'chart' ? (
-        <div className="relative bg-cream-50 rounded border border-carbon-100 p-4">
+        <div className="relative bg-cream-50 rounded border border-carbon-100 p-4 overflow-x-auto">
           <svg
-            viewBox={`0 0 ${displayCount * 40 + 60} 200`}
-            className="w-full h-auto"
-            style={{ minHeight: '180px' }}
+            width={chartWidth}
+            height={200}
+            viewBox={`0 0 ${chartWidth} 200`}
+            style={{ minWidth: chartWidth, display: 'block' }}
           >
             {/* Y-axis */}
-            <line x1="50" y1="20" x2="50" y2="160" stroke="#94a3b8" strokeWidth="1" />
+            <line
+              x1={leftMargin - 5}
+              y1={topY}
+              x2={leftMargin - 5}
+              y2={bottomY}
+              stroke="#cbd5e1"
+              strokeWidth="1"
+            />
 
             {/* Y-axis labels */}
-            <text x="45" y="25" textAnchor="end" fontSize="10" fill="#64748b" fontFamily="monospace">
-              {Math.round(maxHz)}
+            <text
+              x={leftMargin - 10}
+              y={topY + 4}
+              textAnchor="end"
+              fontSize="10"
+              fill="#64748b"
+              fontFamily="monospace"
+            >
+              {Math.round(maxHz)} Hz
             </text>
-            <text x="45" y="90" textAnchor="end" fontSize="10" fill="#64748b" fontFamily="monospace">
-              {Math.round(maxHz / 2)}
+            <text
+              x={leftMargin - 10}
+              y={(topY + bottomY) / 2 + 4}
+              textAnchor="end"
+              fontSize="10"
+              fill="#64748b"
+              fontFamily="monospace"
+            >
+              {Math.round((maxHz + minHz) / 2)} Hz
             </text>
-            <text x="45" y="160" textAnchor="end" fontSize="10" fill="#64748b" fontFamily="monospace">
-              0
+            <text
+              x={leftMargin - 10}
+              y={bottomY + 4}
+              textAnchor="end"
+              fontSize="10"
+              fill="#64748b"
+              fontFamily="monospace"
+            >
+              {Math.round(minHz)} Hz
             </text>
+
+            {/* Horizontal grid lines */}
+            <line
+              x1={leftMargin}
+              y1={topY}
+              x2={chartWidth - 10}
+              y2={topY}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              strokeDasharray="4,4"
+            />
+            <line
+              x1={leftMargin}
+              y1={(topY + bottomY) / 2}
+              x2={chartWidth - 10}
+              y2={(topY + bottomY) / 2}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              strokeDasharray="4,4"
+            />
+
+            {/* X-axis (baseline) */}
+            <line
+              x1={leftMargin - 5}
+              y1={bottomY}
+              x2={chartWidth - 10}
+              y2={bottomY}
+              stroke="#cbd5e1"
+              strokeWidth="1"
+            />
 
             {/* Bars */}
             {displayOvertones.map((overtone, i) => {
-              const barHeight = (overtone.hz / maxHz) * 140; // 140px max bar height
-              const barX = 60 + i * 35;
-              const barY = 160 - barHeight;
+              // Calculate bar height as proportion of frequency range
+              const normalizedHeight = (overtone.hz - minHz) / (maxHz - minHz);
+              const barHeight = Math.max(normalizedHeight * barAreaHeight, 4);
+              const barX = leftMargin + i * (barWidth + barGap);
+              const barY = bottomY - barHeight;
               const isOutOfTune = outOfTuneHarmonics.includes(overtone.harmonic);
               const barColor = isOutOfTune ? '#f59e0b' : '#f97316';
-              const opacity = 1 - (i * 0.03);
 
               return (
                 <g key={overtone.harmonic}>
                   {/* Bar */}
-                  <motion.rect
+                  <rect
                     x={barX}
                     y={barY}
-                    width="25"
+                    width={barWidth}
                     height={barHeight}
                     fill={barColor}
-                    opacity={opacity}
-                    rx="2"
-                    initial={{ height: 0, y: 160 }}
-                    animate={{ height: barHeight, y: barY }}
-                    transition={{ delay: i * 0.05, duration: 0.3, ease: 'easeOut' }}
+                    rx="3"
+                    opacity={0.9}
                   />
 
-                  {/* Frequency label on bar */}
-                  <motion.text
-                    x={barX + 12.5}
-                    y={barY - 5}
+                  {/* Frequency label above bar */}
+                  <text
+                    x={barX + barWidth / 2}
+                    y={barY - 6}
                     textAnchor="middle"
-                    fontSize="8"
-                    fill="#64748b"
+                    fontSize="9"
+                    fill="#475569"
                     fontFamily="monospace"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.05 + 0.2 }}
                   >
                     {overtone.hz.toFixed(0)}
-                  </motion.text>
-
-                  {/* Harmonic number below */}
-                  <text
-                    x={barX + 12.5}
-                    y="175"
-                    textAnchor="middle"
-                    fontSize="10"
-                    fill={isOutOfTune ? '#f59e0b' : '#64748b'}
-                    fontFamily="monospace"
-                    fontWeight="500"
-                  >
-                    H{overtone.harmonic}
                   </text>
 
-                  {/* Note name inside bar if tall enough */}
-                  {barHeight > 30 && (
+                  {/* Note name inside bar (if tall enough) */}
+                  {barHeight > 25 && (
                     <text
-                      x={barX + 12.5}
+                      x={barX + barWidth / 2}
                       y={barY + barHeight - 8}
                       textAnchor="middle"
                       fontSize="9"
                       fill="white"
-                      fontWeight="500"
+                      fontWeight="600"
                     >
                       {overtone.noteName}
                     </text>
                   )}
+
+                  {/* Harmonic number below */}
+                  <text
+                    x={barX + barWidth / 2}
+                    y={bottomY + 16}
+                    textAnchor="middle"
+                    fontSize="11"
+                    fill={isOutOfTune ? '#f59e0b' : '#475569'}
+                    fontFamily="monospace"
+                    fontWeight="600"
+                  >
+                    H{overtone.harmonic}
+                  </text>
                 </g>
               );
             })}
 
-            {/* X-axis */}
-            <line x1="50" y1="160" x2={60 + displayCount * 35} y2="160" stroke="#94a3b8" strokeWidth="1" />
-
             {/* X-axis label */}
             <text
-              x={(60 + displayCount * 35) / 2 + 25}
-              y="195"
+              x={chartWidth / 2}
+              y={190}
               textAnchor="middle"
               fontSize="11"
               fill="#64748b"

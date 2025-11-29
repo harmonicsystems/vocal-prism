@@ -51,6 +51,8 @@ const SCALE_DEGREES = {
 
   // Modal interchange (borrowed chords)
   'bII': { semitones: 1, type: 'major' },    // Neapolitan
+  'II': { semitones: 2, type: 'major' },     // Lydian II
+  'III': { semitones: 4, type: 'major' },    // Major III (borrowed from parallel major/mixolydian)
   'bIII': { semitones: 3, type: 'major' },   // From minor
   'bVI': { semitones: 8, type: 'major' },    // From minor
   'bVII': { semitones: 10, type: 'major' },  // Mixolydian/minor
@@ -72,8 +74,10 @@ const SCALE_DEGREES = {
 
   // Power chords
   'I5': { semitones: 0, type: 'power' },
+  'bIII5': { semitones: 3, type: 'power' },
   'IV5': { semitones: 5, type: 'power' },
   'V5': { semitones: 7, type: 'power' },
+  'bVI5': { semitones: 8, type: 'power' },
   'bVII5': { semitones: 10, type: 'power' },
 };
 
@@ -261,8 +265,8 @@ const PROGRESSIONS = [
   {
     id: 'andalusian',
     name: 'Andalusian Cadence',
-    chords: ['vi', 'V', 'IV', 'iii'],
-    description: 'Flamenco descending line',
+    chords: ['vi', 'V', 'IV', 'III'],
+    description: 'Flamenco descending line (Am-G-F-E)',
     genre: 'Classical',
     category: 'classical'
   },
@@ -303,8 +307,8 @@ const PROGRESSIONS = [
   {
     id: 'grunge',
     name: 'Grunge',
-    chords: ['I5', 'IV5', 'bVII5', 'I5'],
-    description: 'Smells Like Teen Spirit feel',
+    chords: ['I5', 'IV5', 'bIII5', 'bVI5'],
+    description: 'Smells Like Teen Spirit (F-Bb-Ab-Db)',
     genre: 'Rock',
     category: 'rock'
   },
@@ -327,8 +331,8 @@ const PROGRESSIONS = [
   {
     id: 'creep',
     name: 'Creep',
-    chords: ['I', 'iii', 'IV', 'iv'],
-    description: 'Radiohead\'s famous minor iv',
+    chords: ['I', 'III', 'IV', 'iv'],
+    description: 'Radiohead - major III to minor iv',
     genre: 'Rock',
     category: 'rock'
   },
