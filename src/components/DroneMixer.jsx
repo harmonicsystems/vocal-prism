@@ -13,7 +13,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, getAudioState } from '../utils/mobileAudio';
+import { getAudioContext, getAudioState, isAudioReady, subscribeToAudioState } from '../utils/mobileAudio';
+import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Historical context definitions
 const HISTORICAL_CONTEXTS = {
@@ -308,6 +309,16 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     }
   }, [mode, scale, labelMode]);
 
+  // Subscribe to audio state changes
+  useEffect(() => {
+    const unsubscribe = subscribeToAudioState((state) => {
+      if (state === 'running' && audioState === 'waiting') {
+        setAudioState('idle');
+      }
+    });
+    return unsubscribe;
+  }, [audioState]);
+
   // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
     try {
@@ -316,8 +327,15 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       // Use shared audio context utility (handles mobile unlocking)
       const ctx = await getAudioContext();
 
-      if (!ctx || ctx.state !== 'running') {
+      if (!ctx) {
         setAudioState('error');
+        return null;
+      }
+
+      // If context is suspended, it needs user interaction
+      // The AudioUnlockInline component will handle this
+      if (ctx.state === 'suspended') {
+        setAudioState('waiting');
         return null;
       }
 
@@ -634,13 +652,19 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         </div>
       </div>
 
-      {/* Audio Debug - remove after fixing */}
-      {audioState !== 'idle' && audioState !== 'running' && (
-        <div className={`mb-2 px-2 py-1 rounded text-[10px] ${
-          audioState === 'starting' ? 'bg-yellow-900/50 text-yellow-400' :
-          audioState === 'error' ? 'bg-red-900/50 text-red-400' : ''
-        }`}>
-          Audio: {audioState} | Context: {audioContextRef.current?.state || 'none'}
+      {/* Mobile audio unlock prompt */}
+      <AudioUnlockInline onUnlock={() => setAudioState('idle')} />
+
+      {/* Audio state indicator */}
+      {audioState === 'waiting' && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-signal-amber/10 border border-signal-amber/30 text-signal-amber text-xs flex items-center gap-2">
+          <span>🔊</span>
+          <span>Tap "Enable Audio" above to play frequencies</span>
+        </div>
+      )}
+      {audioState === 'error' && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-red-900/30 border border-red-500/30 text-red-400 text-xs">
+          Audio initialization failed. Try refreshing the page.
         </div>
       )}
 
