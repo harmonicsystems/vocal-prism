@@ -114,13 +114,31 @@ async function resumeContext(ctx, maxRetries = 3) {
  * Get or create a shared AudioContext
  * Call this from a click/touch handler for best results
  *
+ * IMPORTANT: This function now kicks off resume() synchronously before any awaits
+ * to maintain the user gesture chain on Chrome mobile.
+ *
  * @returns {Promise<AudioContext|null>}
  */
 export async function getAudioContext() {
   const ctx = ensureContext();
   if (!ctx) return null;
 
-  // Always try to resume - context might have been suspended
+  // CRITICAL: Kick off resume() SYNCHRONOUSLY before any awaits
+  // Chrome mobile needs this in the direct gesture call stack
+  if (ctx.state === 'suspended') {
+    ctx.resume(); // Fire and forget - we'll check state later
+  }
+
+  // On mobile, also play unlock tone immediately (while still in gesture)
+  if (isMobile() && ctx.state !== 'running') {
+    playUnlockToneSync(ctx);
+    unlockCount++;
+  }
+
+  // Now we can await - give time for resume to complete
+  await new Promise(r => setTimeout(r, 100));
+
+  // If still not running, try resume with retries
   if (ctx.state === 'suspended') {
     const resumed = await resumeContext(ctx);
 
@@ -131,12 +149,6 @@ export async function getAudioContext() {
     }
   }
 
-  // Play unlock tone on mobile (every time to ensure it stays unlocked)
-  if (isMobile() && ctx.state === 'running') {
-    await playUnlockTone(ctx);
-    unlockCount++;
-  }
-
   notifyListeners();
   return ctx;
 }
@@ -144,24 +156,66 @@ export async function getAudioContext() {
 /**
  * Force unlock - call this directly from a user gesture (click/touchend)
  * Returns true if audio is now ready
+ *
+ * CRITICAL: On Chrome mobile, we must call resume() and start oscillator
+ * SYNCHRONOUSLY in the user gesture call stack. No awaits before that!
  */
 export async function forceUnlock() {
   const ctx = ensureContext();
   if (!ctx) return false;
 
-  // Resume with retries
-  const resumed = await resumeContext(ctx, 5);
+  // CRITICAL: Call resume() IMMEDIATELY (synchronously) - don't await first!
+  // Chrome mobile requires this to be in the direct call stack of the user gesture
+  if (ctx.state === 'suspended') {
+    ctx.resume(); // Don't await - just kick it off
+  }
 
-  if (resumed) {
-    // Always play unlock tone on force unlock
-    await playUnlockTone(ctx);
-    unlockCount++;
+  // ALSO play unlock tone IMMEDIATELY (while still in gesture call stack)
+  // This is more reliable than waiting for resume to complete first
+  playUnlockToneSync(ctx);
+  unlockCount++;
+
+  // NOW we can await for things to settle
+  await new Promise(r => setTimeout(r, 100));
+
+  // Check if it worked
+  if (ctx.state === 'running') {
     notifyListeners();
     return true;
   }
 
+  // If still not running, try resume with retries
+  const resumed = await resumeContext(ctx, 3);
   notifyListeners();
-  return false;
+  return resumed;
+}
+
+/**
+ * Synchronous version of unlock tone - doesn't return a promise
+ * Call this immediately in user gesture handler
+ */
+function playUnlockToneSync(ctx) {
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    // Slightly louder than before to ensure Chrome registers it
+    gain.gain.setValueAtTime(0.02, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+
+    osc.type = 'sine';
+    osc.frequency.value = 440;
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+
+    console.log('[MobileAudio] Unlock tone started (sync)');
+  } catch (e) {
+    console.warn('[MobileAudio] Sync unlock tone failed:', e);
+  }
 }
 
 /**
