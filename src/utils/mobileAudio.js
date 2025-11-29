@@ -1,167 +1,152 @@
 /**
- * Mobile Audio Utilities
- * Robust audio context handling for mobile browsers (Chrome, Safari, etc.)
+ * Mobile Audio Utilities - Bulletproof Edition
  *
- * Mobile browsers require:
- * 1. AudioContext created/resumed in response to user gesture (click/touch)
- * 2. Some browsers need actual audio playback to fully "unlock"
- * 3. Context can get suspended when tab goes to background
+ * The KEY insight: Mobile browsers track user gestures through the SYNCHRONOUS
+ * call stack. Once you `await` anything, you lose the gesture context.
  *
- * This module provides a bulletproof approach that works on all mobile browsers.
+ * This implementation:
+ * 1. Does all critical work SYNCHRONOUSLY in the gesture handler
+ * 2. Uses a global touch/click listener to catch the first interaction
+ * 3. Creates a silent buffer (more reliable than oscillator on iOS)
+ * 4. Keeps trying on every user interaction until it works
  */
 
 let sharedAudioContext = null;
-let unlockCount = 0;
+let isUnlocked = false;
+let unlockAttempts = 0;
 let stateListeners = new Set();
 
-// Detect mobile/touch device
-const isMobile = () => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    ('ontouchstart' in window) ||
-    (navigator.maxTouchPoints > 0);
-};
-
 /**
- * Create the AudioContext if it doesn't exist
+ * Synchronously create and unlock the AudioContext
+ * MUST be called from within a user gesture (click/touch/keydown)
  */
-function ensureContext() {
+function unlockAudioSync() {
+  // Create context if needed
   if (!sharedAudioContext) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) {
       console.error('Web Audio API not supported');
-      return null;
+      return false;
     }
     sharedAudioContext = new AudioCtx();
+    sharedAudioContext.onstatechange = notifyListeners;
+  }
 
-    // Listen for state changes
-    sharedAudioContext.onstatechange = () => {
+  // If already running, we're good
+  if (sharedAudioContext.state === 'running') {
+    isUnlocked = true;
+    return true;
+  }
+
+  // Resume (this returns a promise but we call it synchronously for the gesture)
+  sharedAudioContext.resume();
+
+  // Play a silent buffer - this is the most reliable unlock method
+  // Works on iOS Safari, Chrome Mobile, Firefox Mobile, etc.
+  try {
+    const buffer = sharedAudioContext.createBuffer(1, 1, 22050);
+    const source = sharedAudioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(sharedAudioContext.destination);
+    source.start(0);
+
+    // Also try with an oscillator as backup (some Android devices prefer this)
+    const osc = sharedAudioContext.createOscillator();
+    const gain = sharedAudioContext.createGain();
+    gain.gain.value = 0; // Silent
+    osc.connect(gain);
+    gain.connect(sharedAudioContext.destination);
+    osc.start(0);
+    osc.stop(sharedAudioContext.currentTime + 0.001);
+  } catch (e) {
+    // Ignore errors, the unlock might still work
+  }
+
+  unlockAttempts++;
+
+  // Check if it worked (might take a moment)
+  setTimeout(() => {
+    if (sharedAudioContext && sharedAudioContext.state === 'running') {
+      isUnlocked = true;
       notifyListeners();
-    };
+    }
+  }, 100);
+
+  return sharedAudioContext.state === 'running';
+}
+
+/**
+ * Global unlock handler - catches ANY user interaction
+ */
+function globalUnlockHandler(e) {
+  // Try to unlock
+  const success = unlockAudioSync();
+
+  // If unlocked, remove the listeners
+  if (isUnlocked || (sharedAudioContext && sharedAudioContext.state === 'running')) {
+    isUnlocked = true;
+    document.removeEventListener('touchstart', globalUnlockHandler, true);
+    document.removeEventListener('touchend', globalUnlockHandler, true);
+    document.removeEventListener('click', globalUnlockHandler, true);
+    document.removeEventListener('keydown', globalUnlockHandler, true);
+    notifyListeners();
+  }
+}
+
+/**
+ * Install global unlock listeners
+ * Call this early in your app
+ */
+export function installGlobalUnlock() {
+  // Use capture phase to get the event first
+  document.addEventListener('touchstart', globalUnlockHandler, true);
+  document.addEventListener('touchend', globalUnlockHandler, true);
+  document.addEventListener('click', globalUnlockHandler, true);
+  document.addEventListener('keydown', globalUnlockHandler, true);
+}
+
+/**
+ * Get the shared AudioContext
+ * If not unlocked yet, returns the context anyway (caller should check state)
+ */
+export function getAudioContext() {
+  if (!sharedAudioContext) {
+    // Create it, but it won't be usable until unlocked
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      sharedAudioContext = new AudioCtx();
+      sharedAudioContext.onstatechange = notifyListeners;
+    }
   }
   return sharedAudioContext;
 }
 
 /**
- * Play a short, audible tone to unlock mobile audio
- * Chrome Mobile specifically requires actual audio output
+ * Get the context, trying to unlock it
+ * This is async but the unlock attempt is still sync
  */
-function playUnlockTone(ctx) {
-  return new Promise((resolve) => {
-    try {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      // Short but audible - some devices need this
-      // Using a very low volume so user barely hears it
-      gain.gain.setValueAtTime(0.01, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-
-      osc.type = 'sine';
-      osc.frequency.value = 440;
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.05);
-
-      osc.onended = () => {
-        osc.disconnect();
-        gain.disconnect();
-        resolve(true);
-      };
-
-      // Fallback timeout
-      setTimeout(() => resolve(true), 100);
-    } catch (e) {
-      console.warn('Unlock tone failed:', e);
-      resolve(false);
-    }
-  });
-}
-
-/**
- * Resume the AudioContext with retry logic
- */
-async function resumeContext(ctx, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    if (ctx.state === 'running') {
-      return true;
-    }
-
-    try {
-      await ctx.resume();
-      // Give it a moment to actually transition
-      await new Promise(r => setTimeout(r, 50));
-
-      if (ctx.state === 'running') {
-        return true;
-      }
-    } catch (e) {
-      console.warn(`Resume attempt ${i + 1} failed:`, e);
-    }
-
-    // Wait before retry
-    if (i < maxRetries - 1) {
-      await new Promise(r => setTimeout(r, 100));
-    }
-  }
-
-  return ctx.state === 'running';
-}
-
-/**
- * Get or create a shared AudioContext
- * Call this from a click/touch handler for best results
- *
- * @returns {Promise<AudioContext|null>}
- */
-export async function getAudioContext() {
-  const ctx = ensureContext();
+export async function getAudioContextAsync() {
+  const ctx = getAudioContext();
   if (!ctx) return null;
 
-  // Always try to resume - context might have been suspended
+  // If suspended, the caller needs to trigger from a user gesture
   if (ctx.state === 'suspended') {
-    const resumed = await resumeContext(ctx);
+    // Try resume (might work if we're still in a gesture context)
+    ctx.resume();
 
-    if (!resumed) {
-      console.warn('AudioContext could not be resumed. User interaction may be required.');
-      notifyListeners();
-      return ctx; // Return it anyway, caller can check state
-    }
+    // Wait a bit to see if it works
+    await new Promise(r => setTimeout(r, 100));
   }
 
-  // Play unlock tone on mobile (every time to ensure it stays unlocked)
-  if (isMobile() && ctx.state === 'running') {
-    await playUnlockTone(ctx);
-    unlockCount++;
-  }
-
-  notifyListeners();
   return ctx;
 }
 
 /**
- * Force unlock - call this directly from a user gesture (click/touchend)
- * Returns true if audio is now ready
+ * Force unlock - call this directly from a click/touch handler
+ * Returns true if audio is ready
  */
-export async function forceUnlock() {
-  const ctx = ensureContext();
-  if (!ctx) return false;
-
-  // Resume with retries
-  const resumed = await resumeContext(ctx, 5);
-
-  if (resumed) {
-    // Always play unlock tone on force unlock
-    await playUnlockTone(ctx);
-    unlockCount++;
-    notifyListeners();
-    return true;
-  }
-
-  notifyListeners();
-  return false;
+export function forceUnlock() {
+  return unlockAudioSync();
 }
 
 /**
@@ -180,23 +165,26 @@ export function getAudioState() {
 }
 
 /**
- * Check if we're on a mobile device
- */
-export function isMobileDevice() {
-  return isMobile();
-}
-
-/**
- * Get debug info about audio state
+ * Get debug info
  */
 export function getAudioDebugInfo() {
   return {
     hasContext: !!sharedAudioContext,
     state: sharedAudioContext?.state || 'none',
     sampleRate: sharedAudioContext?.sampleRate || 0,
-    unlockCount,
-    isMobile: isMobile(),
+    isUnlocked,
+    unlockAttempts,
+    isMobile: isMobileDevice(),
   };
+}
+
+/**
+ * Check if we're on a mobile/touch device
+ */
+export function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    ('ontouchstart' in window) ||
+    (navigator.maxTouchPoints > 0);
 }
 
 /**
@@ -204,41 +192,39 @@ export function getAudioDebugInfo() {
  */
 export function subscribeToAudioState(callback) {
   stateListeners.add(callback);
+  // Immediately call with current state
+  callback(getAudioState());
   return () => stateListeners.delete(callback);
 }
 
 /**
- * Notify all listeners of state change
+ * Notify all listeners
  */
 function notifyListeners() {
   const state = getAudioState();
   stateListeners.forEach(cb => {
     try {
       cb(state);
-    } catch (e) {
-      console.warn('Audio state listener error:', e);
-    }
+    } catch (e) {}
   });
 }
 
 /**
- * Close and reset the audio context
+ * Warm up - creates context and installs global listeners
  */
-export function closeAudioContext() {
-  if (sharedAudioContext) {
-    try {
-      sharedAudioContext.close();
-    } catch (e) {}
-    sharedAudioContext = null;
-    unlockCount = 0;
-    notifyListeners();
-  }
+export function warmupAudio() {
+  getAudioContext();
+  installGlobalUnlock();
 }
 
 /**
- * Warm up audio system - call early in app lifecycle
- * This creates the context but doesn't try to unlock
+ * Close and reset
  */
-export function warmupAudio() {
-  ensureContext();
+export function closeAudioContext() {
+  if (sharedAudioContext) {
+    try { sharedAudioContext.close(); } catch (e) {}
+    sharedAudioContext = null;
+    isUnlocked = false;
+    notifyListeners();
+  }
 }

@@ -7,7 +7,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, subscribeToAudioState } from '../utils/mobileAudio';
+import { getAudioContext, subscribeToAudioState, forceUnlock } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Common harmonic combinations in Indian classical music
@@ -128,9 +128,7 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   // Subscribe to audio state changes
   useEffect(() => {
     const unsubscribe = subscribeToAudioState((state) => {
-      if (state === 'running' && audioState === 'waiting') {
-        setAudioState('idle');
-      }
+      setAudioState(state === 'running' ? 'running' : (state === 'suspended' ? 'waiting' : audioState));
     });
     return unsubscribe;
   }, [audioState]);
@@ -150,9 +148,12 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   // Get shruti data by number
   const getShrutiByNumber = (num) => scale.find(s => s.shruti === num);
 
-  // Initialize audio context with mobile-friendly unlocking
-  const initAudio = useCallback(async () => {
-    const ctx = await getAudioContext();
+  // Initialize audio context - SYNCHRONOUS for mobile compatibility
+  const initAudio = useCallback(() => {
+    // Try to unlock synchronously (critical for mobile!)
+    forceUnlock();
+
+    const ctx = getAudioContext();
 
     if (!ctx) {
       setAudioState('error');
@@ -177,8 +178,10 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   }, [masterVolume]);
 
   // Start an oscillator for a shruti
-  const startOscillator = useCallback(async (shrutiNum) => {
-    const ctx = await initAudio();
+  const startOscillator = useCallback((shrutiNum) => {
+    const ctx = initAudio();
+    if (!ctx) return;
+
     const shruti = getShrutiByNumber(shrutiNum);
     if (!shruti || oscillatorsRef.current.has(shrutiNum)) return;
 
@@ -233,10 +236,12 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   }, [isPlaying, startOscillator, stopOscillator]);
 
   // Start all active shrutis
-  const startAll = useCallback(async () => {
-    await initAudio();
+  const startAll = useCallback(() => {
+    const ctx = initAudio();
+    if (!ctx) return;
+
     for (const num of activeShrutis) {
-      await startOscillator(num);
+      startOscillator(num);
     }
     setIsPlaying(true);
   }, [initAudio, activeShrutis, startOscillator]);

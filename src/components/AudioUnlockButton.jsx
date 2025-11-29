@@ -2,8 +2,7 @@
  * AudioUnlockButton Component
  * Shows a tap-to-enable-audio button on mobile devices
  *
- * Mobile browsers require user interaction to enable audio.
- * This component provides clear UI feedback and handles the unlock.
+ * Uses SYNCHRONOUS unlock for maximum compatibility with mobile browsers
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -13,60 +12,75 @@ import {
   isAudioReady,
   subscribeToAudioState,
   isMobileDevice,
-  getAudioState
+  getAudioState,
+  getAudioDebugInfo
 } from '../utils/mobileAudio';
 
 export default function AudioUnlockButton({ onUnlock, showAlways = false }) {
   const [audioState, setAudioState] = useState(getAudioState());
-  const [isUnlocking, setIsUnlocking] = useState(false);
   const [showButton, setShowButton] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [tapped, setTapped] = useState(false);
 
   // Subscribe to audio state changes
   useEffect(() => {
     const unsubscribe = subscribeToAudioState((state) => {
       setAudioState(state);
+      // Auto-hide when audio starts working
+      if (state === 'running') {
+        setShowButton(false);
+        onUnlock?.();
+      }
     });
     return unsubscribe;
-  }, []);
+  }, [onUnlock]);
 
   // Determine if we should show the button
   useEffect(() => {
+    // Show on mobile when audio isn't ready, or always if showAlways
     const shouldShow = !dismissed && (
       showAlways ||
-      (isMobileDevice() && !isAudioReady())
+      (isMobileDevice() && audioState !== 'running')
     );
     setShowButton(shouldShow);
   }, [audioState, showAlways, dismissed]);
 
-  // Handle unlock
-  const handleUnlock = useCallback(async () => {
-    setIsUnlocking(true);
+  // Handle unlock - MUST be synchronous for mobile browsers
+  const handleUnlock = useCallback((e) => {
+    // Prevent default to avoid any delays
+    e.preventDefault();
+    e.stopPropagation();
 
-    try {
-      const success = await forceUnlock();
+    setTapped(true);
 
-      if (success) {
+    // Call forceUnlock synchronously - this is critical!
+    const success = forceUnlock();
+
+    // Check result after a short delay
+    setTimeout(() => {
+      if (isAudioReady()) {
         setShowButton(false);
         onUnlock?.();
+      } else {
+        // Still not working, but keep trying on next tap
+        setTapped(false);
       }
-    } catch (e) {
-      console.error('Audio unlock failed:', e);
-    } finally {
-      setIsUnlocking(false);
-    }
+    }, 150);
   }, [onUnlock]);
 
-  // Handle dismiss (user doesn't want audio)
-  const handleDismiss = useCallback(() => {
+  // Handle dismiss
+  const handleDismiss = useCallback((e) => {
+    e.stopPropagation();
     setDismissed(true);
     setShowButton(false);
   }, []);
 
-  // Don't render if audio is already working
-  if (!showButton || isAudioReady()) {
+  // Don't render if not needed
+  if (!showButton || audioState === 'running') {
     return null;
   }
+
+  const debugInfo = getAudioDebugInfo();
 
   return (
     <AnimatePresence>
@@ -107,47 +121,43 @@ export default function AudioUnlockButton({ onUnlock, showAlways = false }) {
 
               {/* Explanation */}
               <p className="text-xs text-carbon-400 mb-4">
-                Mobile browsers require a tap to enable audio playback.
-                Tap below to unlock the frequency generators.
+                Your browser requires a tap to enable audio playback.
               </p>
 
-              {/* Unlock Button */}
-              <motion.button
+              {/* Unlock Button - using onTouchEnd AND onClick for maximum compatibility */}
+              <button
+                onTouchEnd={handleUnlock}
                 onClick={handleUnlock}
-                disabled={isUnlocking}
                 className={`
-                  w-full py-3 px-4 rounded-lg font-semibold text-sm
+                  w-full py-4 px-4 rounded-lg font-semibold text-base
                   flex items-center justify-center gap-2
                   transition-all duration-200
-                  ${isUnlocking
-                    ? 'bg-carbon-700 text-carbon-400 cursor-wait'
-                    : 'bg-signal-orange text-carbon-900 hover:bg-signal-orange/90 active:scale-[0.98]'}
+                  ${tapped
+                    ? 'bg-carbon-700 text-carbon-400'
+                    : 'bg-signal-orange text-carbon-900 hover:bg-signal-orange/90 active:bg-signal-orange/80 active:scale-[0.98]'}
                 `}
-                whileTap={{ scale: 0.98 }}
               >
-                {isUnlocking ? (
+                {tapped ? (
                   <>
                     <motion.div
-                      className="w-4 h-4 border-2 border-carbon-400 border-t-transparent rounded-full"
+                      className="w-5 h-5 border-2 border-carbon-400 border-t-transparent rounded-full"
                       animate={{ rotate: 360 }}
                       transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
                     />
-                    <span>Enabling...</span>
+                    <span>Enabling audio...</span>
                   </>
                 ) : (
                   <>
-                    <span>Tap to Enable Audio</span>
+                    <span>TAP HERE TO ENABLE AUDIO</span>
                     <span>🎵</span>
                   </>
                 )}
-              </motion.button>
+              </button>
 
-              {/* Debug info (in development) */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="mt-2 text-[9px] text-carbon-600 font-mono">
-                  State: {audioState} | Mobile: {isMobileDevice() ? 'yes' : 'no'}
-                </div>
-              )}
+              {/* Debug info (always show for troubleshooting) */}
+              <div className="mt-3 text-[9px] text-carbon-600 font-mono text-center">
+                State: {audioState} | Attempts: {debugInfo.unlockAttempts} | Mobile: {debugInfo.isMobile ? 'yes' : 'no'}
+              </div>
             </div>
           </div>
         </motion.div>
@@ -161,49 +171,55 @@ export default function AudioUnlockButton({ onUnlock, showAlways = false }) {
  */
 export function AudioUnlockInline({ onUnlock }) {
   const [audioState, setAudioState] = useState(getAudioState());
-  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [tapped, setTapped] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = subscribeToAudioState(setAudioState);
-    return unsubscribe;
-  }, []);
-
-  const handleUnlock = useCallback(async () => {
-    setIsUnlocking(true);
-    try {
-      const success = await forceUnlock();
-      if (success) {
+    const unsubscribe = subscribeToAudioState((state) => {
+      setAudioState(state);
+      if (state === 'running') {
         onUnlock?.();
       }
-    } finally {
-      setIsUnlocking(false);
-    }
+    });
+    return unsubscribe;
   }, [onUnlock]);
 
+  // Synchronous unlock handler
+  const handleUnlock = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setTapped(true);
+    forceUnlock();
+
+    setTimeout(() => {
+      if (!isAudioReady()) {
+        setTapped(false);
+      }
+    }, 200);
+  }, []);
+
   // Only show on mobile when audio isn't ready
-  if (!isMobileDevice() || isAudioReady()) {
+  if (!isMobileDevice() || audioState === 'running') {
     return null;
   }
 
   return (
-    <motion.button
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+    <button
+      onTouchEnd={handleUnlock}
       onClick={handleUnlock}
-      disabled={isUnlocking}
       className={`
-        w-full py-2.5 px-4 mb-3 rounded-lg text-sm font-medium
+        w-full py-3 px-4 mb-3 rounded-lg text-sm font-medium
         flex items-center justify-center gap-2
         border transition-all
-        ${isUnlocking
+        ${tapped
           ? 'bg-carbon-800 border-carbon-600 text-carbon-400'
-          : 'bg-signal-orange/10 border-signal-orange/50 text-signal-orange hover:bg-signal-orange/20'}
+          : 'bg-signal-orange/10 border-signal-orange/50 text-signal-orange hover:bg-signal-orange/20 active:bg-signal-orange/30'}
       `}
     >
-      {isUnlocking ? (
+      {tapped ? (
         <>
           <motion.div
-            className="w-3 h-3 border-2 border-signal-orange/50 border-t-signal-orange rounded-full"
+            className="w-4 h-4 border-2 border-signal-orange/50 border-t-signal-orange rounded-full"
             animate={{ rotate: 360 }}
             transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
           />
@@ -212,9 +228,9 @@ export function AudioUnlockInline({ onUnlock }) {
       ) : (
         <>
           <span>🔊</span>
-          <span>Tap to enable audio</span>
+          <span>TAP TO ENABLE AUDIO</span>
         </>
       )}
-    </motion.button>
+    </button>
   );
 }

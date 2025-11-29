@@ -13,7 +13,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, getAudioState, isAudioReady, subscribeToAudioState } from '../utils/mobileAudio';
+import { getAudioContext, isAudioReady, subscribeToAudioState, forceUnlock } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Historical context definitions
@@ -312,20 +312,19 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   // Subscribe to audio state changes
   useEffect(() => {
     const unsubscribe = subscribeToAudioState((state) => {
-      if (state === 'running' && audioState === 'waiting') {
-        setAudioState('idle');
-      }
+      setAudioState(state === 'running' ? 'running' : (state === 'suspended' ? 'waiting' : audioState));
     });
     return unsubscribe;
   }, [audioState]);
 
-  // Initialize audio context with mobile-friendly unlocking
-  const initAudio = useCallback(async () => {
+  // Initialize audio context - SYNCHRONOUS for mobile compatibility
+  const initAudio = useCallback(() => {
     try {
-      setAudioState('starting');
+      // Try to unlock synchronously (critical for mobile!)
+      forceUnlock();
 
-      // Use shared audio context utility (handles mobile unlocking)
-      const ctx = await getAudioContext();
+      // Get the context (now synchronous)
+      const ctx = getAudioContext();
 
       if (!ctx) {
         setAudioState('error');
@@ -333,7 +332,6 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       }
 
       // If context is suspended, it needs user interaction
-      // The AudioUnlockInline component will handle this
       if (ctx.state === 'suspended') {
         setAudioState('waiting');
         return null;
@@ -411,15 +409,15 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   }, [stopOscillator]);
 
   // Toggle play
-  const togglePlay = useCallback(async () => {
+  const togglePlay = useCallback(() => {
     if (isPlaying) {
       stopAll();
       setIsPlaying(false);
       setAudioState('idle');
     } else {
-      const ctx = await initAudio();
+      const ctx = initAudio();
       if (!ctx) {
-        console.error('Failed to initialize audio');
+        console.error('Failed to initialize audio - tap "Enable Audio" first');
         return;
       }
       activeVoices.forEach(voiceId => {
@@ -431,7 +429,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
   }, [isPlaying, activeVoices, volumes, initAudio, getFrequency, createOscillator, stopAll]);
 
   // Toggle voice
-  const toggleVoice = useCallback(async (voiceId) => {
+  const toggleVoice = useCallback((voiceId) => {
     const isCurrentlyActive = activeVoices.has(voiceId);
 
     if (isCurrentlyActive) {
@@ -448,7 +446,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         return next;
       });
       if (isPlaying) {
-        await initAudio();
+        initAudio();
         createOscillator(voiceId, getFrequency(voiceId), volumes[voiceId]);
       }
     }
