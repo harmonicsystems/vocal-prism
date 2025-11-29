@@ -5,6 +5,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAudioContext } from '../utils/mobileAudio';
 
 export default function ShrutiScale({ shrutiData, f0 = 165 }) {
   const [showFull, setShowFull] = useState(false);
@@ -27,30 +28,19 @@ export default function ShrutiScale({ shrutiData, f0 = 165 }) {
 
   const { scale, ragas, system } = shrutiData;
 
-  // Unlock audio on mobile by playing a silent buffer
-  const unlockAudio = useCallback((ctx) => {
-    const buffer = ctx.createBuffer(1, 1, 22050);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(0);
-  }, []);
-
-  // Initialize audio context
+  // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      masterGainRef.current = audioContextRef.current.createGain();
+    const ctx = await getAudioContext();
+    if (!ctx || ctx.state !== 'running') return null;
+
+    if (!audioContextRef.current || audioContextRef.current !== ctx) {
+      audioContextRef.current = ctx;
+      masterGainRef.current = ctx.createGain();
       masterGainRef.current.gain.value = 0.5;
-      masterGainRef.current.connect(audioContextRef.current.destination);
+      masterGainRef.current.connect(ctx.destination);
     }
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-    // Play silent buffer to unlock mobile audio
-    unlockAudio(audioContextRef.current);
-    return audioContextRef.current;
-  }, [unlockAudio]);
+    return ctx;
+  }, []);
 
   // Play a single shruti tone
   const playShruti = useCallback(async (shruti, duration = 0.8) => {
@@ -174,22 +164,18 @@ export default function ShrutiScale({ shrutiData, f0 = 165 }) {
     playScale(ragaShrutis);
   }, [selectedRaga, ragas, scale, playScale]);
 
-  // Cleanup on unmount
+  // Cleanup oscillators (don't close shared audio context)
   useEffect(() => {
     return () => {
       if (sequenceTimeoutRef.current) {
         clearTimeout(sequenceTimeoutRef.current);
       }
       if (droneOscRef.current) {
-        droneOscRef.current.stop();
-        droneOscRef.current.disconnect();
+        try { droneOscRef.current.stop(); droneOscRef.current.disconnect(); } catch (e) {}
       }
       activeOscillatorsRef.current.forEach(({ osc }) => {
         try { osc.stop(); } catch (e) {}
       });
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
     };
   }, []);
 

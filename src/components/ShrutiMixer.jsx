@@ -7,6 +7,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAudioContext } from '../utils/mobileAudio';
 
 // Common harmonic combinations in Indian classical music
 const HARMONY_PRESETS = [
@@ -137,30 +138,19 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   // Get shruti data by number
   const getShrutiByNumber = (num) => scale.find(s => s.shruti === num);
 
-  // Unlock audio on mobile by playing a silent buffer
-  const unlockAudio = useCallback((ctx) => {
-    const buffer = ctx.createBuffer(1, 1, 22050);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(0);
-  }, []);
-
-  // Initialize audio context
+  // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      masterGainRef.current = audioContextRef.current.createGain();
+    const ctx = await getAudioContext();
+    if (!ctx || ctx.state !== 'running') return null;
+
+    if (!audioContextRef.current || audioContextRef.current !== ctx) {
+      audioContextRef.current = ctx;
+      masterGainRef.current = ctx.createGain();
       masterGainRef.current.gain.value = masterVolume * 0.4;
-      masterGainRef.current.connect(audioContextRef.current.destination);
+      masterGainRef.current.connect(ctx.destination);
     }
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-    // Play silent buffer to unlock mobile audio
-    unlockAudio(audioContextRef.current);
-    return audioContextRef.current;
-  }, [masterVolume, unlockAudio]);
+    return ctx;
+  }, [masterVolume]);
 
   // Start an oscillator for a shruti
   const startOscillator = useCallback(async (shrutiNum) => {
@@ -325,15 +315,12 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
     });
   }, [waveType]);
 
-  // Cleanup
+  // Cleanup oscillators (don't close shared audio context)
   useEffect(() => {
     return () => {
       oscillatorsRef.current.forEach(({ osc }) => {
         try { osc.stop(); } catch (e) {}
       });
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
     };
   }, []);
 

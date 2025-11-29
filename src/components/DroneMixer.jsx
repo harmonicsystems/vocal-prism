@@ -13,6 +13,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAudioContext, getAudioState } from '../utils/mobileAudio';
 
 // Historical context definitions
 const HISTORICAL_CONTEXTS = {
@@ -241,6 +242,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
 
   // State
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioState, setAudioState] = useState('idle'); // idle, starting, running, error
   const [masterVolume, setMasterVolume] = useState(0.5);
   const [mode, setMode] = useState('scale'); // 'scale' or 'chromatic'
   const [labelMode, setLabelMode] = useState('svara');
@@ -306,30 +308,35 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     }
   }, [mode, scale, labelMode]);
 
-  // Unlock audio on mobile by playing a silent buffer
-  const unlockAudio = useCallback((ctx) => {
-    const buffer = ctx.createBuffer(1, 1, 22050);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(0);
-  }, []);
-
-  // Initialize audio context
+  // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      masterGainRef.current = audioContextRef.current.createGain();
-      masterGainRef.current.gain.value = masterVolume;
-      masterGainRef.current.connect(audioContextRef.current.destination);
+    try {
+      setAudioState('starting');
+
+      // Use shared audio context utility (handles mobile unlocking)
+      const ctx = await getAudioContext();
+
+      if (!ctx || ctx.state !== 'running') {
+        setAudioState('error');
+        return null;
+      }
+
+      // Store reference and set up master gain if needed
+      if (!audioContextRef.current || audioContextRef.current !== ctx) {
+        audioContextRef.current = ctx;
+        masterGainRef.current = ctx.createGain();
+        masterGainRef.current.gain.value = masterVolume;
+        masterGainRef.current.connect(ctx.destination);
+      }
+
+      setAudioState('running');
+      return ctx;
+    } catch (err) {
+      console.error('Audio init error:', err);
+      setAudioState('error');
+      return null;
     }
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-    // Play silent buffer to unlock mobile audio
-    unlockAudio(audioContextRef.current);
-    return audioContextRef.current;
-  }, [masterVolume, unlockAudio]);
+  }, [masterVolume]);
 
   // Create oscillator
   const createOscillator = useCallback((voiceId, freq, volume) => {
@@ -390,8 +397,13 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     if (isPlaying) {
       stopAll();
       setIsPlaying(false);
+      setAudioState('idle');
     } else {
-      await initAudio();
+      const ctx = await initAudio();
+      if (!ctx) {
+        console.error('Failed to initialize audio');
+        return;
+      }
       activeVoices.forEach(voiceId => {
         const freq = getFrequency(voiceId);
         createOscillator(voiceId, freq, volumes[voiceId]);
@@ -488,15 +500,12 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     });
   }, [waveType]);
 
-  // Cleanup
+  // Cleanup oscillators (don't close shared audio context)
   useEffect(() => {
     return () => {
       Object.values(oscillatorsRef.current).forEach(osc => {
         try { osc.stop(); osc.disconnect(); } catch (e) {}
       });
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
     };
   }, []);
 
@@ -624,6 +633,16 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
           </button>
         </div>
       </div>
+
+      {/* Audio Debug - remove after fixing */}
+      {audioState !== 'idle' && audioState !== 'running' && (
+        <div className={`mb-2 px-2 py-1 rounded text-[10px] ${
+          audioState === 'starting' ? 'bg-yellow-900/50 text-yellow-400' :
+          audioState === 'error' ? 'bg-red-900/50 text-red-400' : ''
+        }`}>
+          Audio: {audioState} | Context: {audioContextRef.current?.state || 'none'}
+        </div>
+      )}
 
       {/* Presets */}
       <div className="mb-4">

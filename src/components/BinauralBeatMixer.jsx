@@ -12,6 +12,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAudioContext } from '../utils/mobileAudio';
 
 // Brainwave states with frequencies and descriptions
 const BRAINWAVE_STATES = {
@@ -119,49 +120,36 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
   const frequencies = getFrequencies();
   const currentBrainwave = BRAINWAVE_STATES[selectedState];
 
-  // Unlock audio on mobile by playing a silent buffer
-  const unlockAudio = useCallback((ctx) => {
-    const buffer = ctx.createBuffer(1, 1, 22050);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(0);
-  }, []);
-
-  // Initialize audio context
+  // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = await getAudioContext();
+    if (!ctx || ctx.state !== 'running') return null;
+
+    if (!audioContextRef.current || audioContextRef.current !== ctx) {
+      audioContextRef.current = ctx;
 
       // Master gain
-      masterGainRef.current = audioContextRef.current.createGain();
-      masterGainRef.current.gain.value = volume * 0.3; // Keep it gentle
-      masterGainRef.current.connect(audioContextRef.current.destination);
+      masterGainRef.current = ctx.createGain();
+      masterGainRef.current.gain.value = volume * 0.3;
+      masterGainRef.current.connect(ctx.destination);
 
       // Left channel
-      leftPanRef.current = audioContextRef.current.createStereoPanner();
-      leftPanRef.current.pan.value = -1; // Full left
-      leftGainRef.current = audioContextRef.current.createGain();
+      leftPanRef.current = ctx.createStereoPanner();
+      leftPanRef.current.pan.value = -1;
+      leftGainRef.current = ctx.createGain();
       leftGainRef.current.connect(leftPanRef.current);
       leftPanRef.current.connect(masterGainRef.current);
 
       // Right channel
-      rightPanRef.current = audioContextRef.current.createStereoPanner();
-      rightPanRef.current.pan.value = 1; // Full right
-      rightGainRef.current = audioContextRef.current.createGain();
+      rightPanRef.current = ctx.createStereoPanner();
+      rightPanRef.current.pan.value = 1;
+      rightGainRef.current = ctx.createGain();
       rightGainRef.current.connect(rightPanRef.current);
       rightPanRef.current.connect(masterGainRef.current);
     }
 
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-
-    // Play silent buffer to unlock mobile audio
-    unlockAudio(audioContextRef.current);
-
-    return audioContextRef.current;
-  }, [volume, unlockAudio]);
+    return ctx;
+  }, [volume]);
 
   // Start binaural beat
   const startBeat = useCallback(async () => {
@@ -245,7 +233,7 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
     setBeatFrequency(BRAINWAVE_STATES[stateId].defaultBeat);
   }, []);
 
-  // Cleanup
+  // Cleanup oscillators (don't close shared audio context)
   useEffect(() => {
     return () => {
       if (leftOscRef.current) {
@@ -253,9 +241,6 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
       }
       if (rightOscRef.current) {
         try { rightOscRef.current.stop(); } catch (e) {}
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
       }
     };
   }, []);
