@@ -4,7 +4,7 @@
  */
 
 import { useParams, Link } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 
 import { calculatePrism } from '../engine';
@@ -23,6 +23,9 @@ import TuningSelector from '../components/TuningSelector';
 import ShrutiScale from '../components/ShrutiScale';
 import ShrutiMixer from '../components/ShrutiMixer';
 import BinauralBeatMixer from '../components/BinauralBeatMixer';
+import CircleOfFifths from '../components/CircleOfFifths';
+import TibetanBowl from '../components/TibetanBowl';
+import ChordProgressionLooper from '../components/ChordProgressionLooper';
 import { ArrowLeft, Prism as PrismIcon } from '../components/Icons';
 
 // Contextual explanation component
@@ -66,6 +69,9 @@ export default function PrismPage() {
       return null;
     }
   }, [f0]);
+
+  // State for staff notation label type
+  const [notationLabelType, setNotationLabelType] = useState('svara');
 
   if (!prismData) {
     return (
@@ -165,8 +171,16 @@ export default function PrismPage() {
             <div className="module-body min-w-[500px] sm:min-w-0">
               <PianoKeyboard
                 scale={scale}
-                startOctave={Math.floor(input.f0 < 200 ? 2 : 3)}
-                numOctaves={2}
+                startOctave={(() => {
+                  // Get the lowest octave from actual scale notes
+                  const octaves = scale.map(n => parseInt(n.nearestPitch.match(/\d+/)?.[0] || 4));
+                  return Math.min(...octaves);
+                })()}
+                numOctaves={(() => {
+                  // Calculate how many octaves needed to show all notes
+                  const octaves = scale.map(n => parseInt(n.nearestPitch.match(/\d+/)?.[0] || 4));
+                  return Math.max(...octaves) - Math.min(...octaves) + 1;
+                })()}
               />
             </div>
           </div>
@@ -179,15 +193,34 @@ export default function PrismPage() {
           transition={{ delay: 0.28 }}
           className="mb-4 sm:mb-8"
         >
-          <h2 className="text-base sm:text-lg font-semibold text-carbon-800 mb-3 sm:mb-4 flex items-center gap-2">
-            <span className="font-mono text-[10px] sm:text-xs text-carbon-300">02</span>
-            Staff Notation
-          </h2>
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="text-base sm:text-lg font-semibold text-carbon-800 flex items-center gap-2">
+              <span className="font-mono text-[10px] sm:text-xs text-carbon-300">02</span>
+              Staff Notation
+            </h2>
+            {/* Label type toggle */}
+            <div className="flex items-center gap-1 bg-carbon-100 rounded-lg p-0.5">
+              {['svara', 'solfege'].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setNotationLabelType(type)}
+                  className={`px-2 py-1 text-[10px] sm:text-xs font-medium rounded-md transition-colors ${
+                    notationLabelType === type
+                      ? 'bg-white text-carbon-800 shadow-sm'
+                      : 'text-carbon-500 hover:text-carbon-700'
+                  }`}
+                >
+                  {type === 'svara' ? 'Svara' : 'Solfège'}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="module overflow-x-auto">
             <div className="module-body">
               <StaffNotation
                 scale={scale}
                 title={`${input.nearestPitch} - Your Scale`}
+                labelType={notationLabelType}
               />
             </div>
           </div>
@@ -205,6 +238,11 @@ export default function PrismPage() {
             Hear Your Frequencies
           </h2>
           <DroneMixer scale={scale} f0={input.f0} />
+
+          {/* Chord Progression Looper */}
+          <div className="mt-4">
+            <ChordProgressionLooper f0={input.f0} />
+          </div>
         </motion.section>
 
         {/* Framework Sections */}
@@ -221,11 +259,15 @@ export default function PrismPage() {
               insight={frameworks.pythagorean.insight}
             >
               <div className="space-y-4">
-                <DataRow
-                  label="Circle of Fifths"
-                  value={frameworks.pythagorean.circlePosition.note}
-                  sublabel={`Position ${frameworks.pythagorean.circlePosition.position}`}
-                />
+                {/* Circle of Fifths Visualization */}
+                <div className="flex justify-center py-4">
+                  <CircleOfFifths
+                    rootNote={input.nearestPitch}
+                    scale={scale}
+                    f0={input.f0}
+                    size={320}
+                  />
+                </div>
 
                 <div className="pt-2">
                   <h4 className="text-xs uppercase tracking-wider text-carbon-400 font-medium mb-2">
@@ -425,6 +467,14 @@ export default function PrismPage() {
               insight={frameworks.tibetan.insight}
             >
               <div className="space-y-4">
+                {/* Interactive Singing Bowl */}
+                <div className="flex justify-center py-4 bg-gradient-to-b from-carbon-900 to-carbon-800 rounded-lg">
+                  <TibetanBowl
+                    f0={input.f0}
+                    size={280}
+                  />
+                </div>
+
                 <div className="bg-cream-50 rounded p-3 border border-carbon-100">
                   <div className="text-xs uppercase tracking-wider text-carbon-400 font-medium mb-1">Bowl Equivalent</div>
                   <div className="font-medium text-carbon-800">{frameworks.tibetan.bowlEquivalent.size}</div>

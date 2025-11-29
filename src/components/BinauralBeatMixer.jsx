@@ -12,7 +12,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, subscribeToAudioState } from '../utils/mobileAudio';
+import { getAudioContext, subscribeToAudioState, unlockAudioSync } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Brainwave states with frequencies and descriptions
@@ -174,28 +174,35 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
     return ctx;
   }, [volume]);
 
-  // Start binaural beat
-  const startBeat = useCallback(async () => {
-    const ctx = await initAudio();
-    const { left, right } = getFrequencies();
+  // Start binaural beat - CRITICAL: Must call unlockAudioSync FIRST for Safari
+  const startBeat = useCallback(() => {
+    // CRITICAL: Sync unlock first for Safari
+    unlockAudioSync();
 
-    // Create left oscillator
-    leftOscRef.current = ctx.createOscillator();
-    leftOscRef.current.type = waveType;
-    leftOscRef.current.frequency.value = left;
-    leftGainRef.current.gain.value = 1;
-    leftOscRef.current.connect(leftGainRef.current);
-    leftOscRef.current.start();
+    (async () => {
+      const ctx = await initAudio();
+      if (!ctx) return;
 
-    // Create right oscillator
-    rightOscRef.current = ctx.createOscillator();
-    rightOscRef.current.type = waveType;
-    rightOscRef.current.frequency.value = right;
-    rightGainRef.current.gain.value = 1;
-    rightOscRef.current.connect(rightGainRef.current);
-    rightOscRef.current.start();
+      const { left, right } = getFrequencies();
 
-    setIsPlaying(true);
+      // Create left oscillator
+      leftOscRef.current = ctx.createOscillator();
+      leftOscRef.current.type = waveType;
+      leftOscRef.current.frequency.value = left;
+      leftGainRef.current.gain.value = 1;
+      leftOscRef.current.connect(leftGainRef.current);
+      leftOscRef.current.start();
+
+      // Create right oscillator
+      rightOscRef.current = ctx.createOscillator();
+      rightOscRef.current.type = waveType;
+      rightOscRef.current.frequency.value = right;
+      rightGainRef.current.gain.value = 1;
+      rightOscRef.current.connect(rightGainRef.current);
+      rightOscRef.current.start();
+
+      setIsPlaying(true);
+    })();
   }, [initAudio, getFrequencies, waveType]);
 
   // Stop binaural beat

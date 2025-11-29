@@ -13,7 +13,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, getAudioState, isAudioReady, subscribeToAudioState } from '../utils/mobileAudio';
+import { getAudioContext, getAudioState, isAudioReady, subscribeToAudioState, unlockAudioSync } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Historical context definitions
@@ -410,28 +410,35 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
     Object.keys(oscillatorsRef.current).forEach(id => stopOscillator(id));
   }, [stopOscillator]);
 
-  // Toggle play
-  const togglePlay = useCallback(async () => {
+  // Toggle play - CRITICAL: Must call unlockAudioSync FIRST for Safari
+  const togglePlay = useCallback(() => {
     if (isPlaying) {
       stopAll();
       setIsPlaying(false);
       setAudioState('idle');
     } else {
-      const ctx = await initAudio();
-      if (!ctx) {
-        console.error('Failed to initialize audio');
-        return;
-      }
-      activeVoices.forEach(voiceId => {
-        const freq = getFrequency(voiceId);
-        createOscillator(voiceId, freq, volumes[voiceId]);
-      });
-      setIsPlaying(true);
+      // CRITICAL: Call sync unlock FIRST, in the direct click call stack
+      // Safari requires resume() to be in the synchronous gesture chain
+      unlockAudioSync();
+
+      // Now we can do async stuff
+      (async () => {
+        const ctx = await initAudio();
+        if (!ctx) {
+          console.error('Failed to initialize audio');
+          return;
+        }
+        activeVoices.forEach(voiceId => {
+          const freq = getFrequency(voiceId);
+          createOscillator(voiceId, freq, volumes[voiceId]);
+        });
+        setIsPlaying(true);
+      })();
     }
   }, [isPlaying, activeVoices, volumes, initAudio, getFrequency, createOscillator, stopAll]);
 
-  // Toggle voice
-  const toggleVoice = useCallback(async (voiceId) => {
+  // Toggle voice - CRITICAL: Must call unlockAudioSync FIRST for Safari
+  const toggleVoice = useCallback((voiceId) => {
     const isCurrentlyActive = activeVoices.has(voiceId);
 
     if (isCurrentlyActive) {
@@ -448,8 +455,12 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         return next;
       });
       if (isPlaying) {
-        await initAudio();
-        createOscillator(voiceId, getFrequency(voiceId), volumes[voiceId]);
+        // CRITICAL: Sync unlock first for Safari
+        unlockAudioSync();
+        (async () => {
+          await initAudio();
+          createOscillator(voiceId, getFrequency(voiceId), volumes[voiceId]);
+        })();
       }
     }
   }, [isPlaying, activeVoices, volumes, initAudio, getFrequency, createOscillator, stopOscillator, setActiveVoices]);
@@ -546,111 +557,132 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
 
   return (
     <div className="bg-carbon-900 rounded-lg p-3 sm:p-4 text-white font-mono">
-      {/* Historical Context Selector */}
-      <div className="mb-3 sm:mb-4">
-        <div className="text-[9px] sm:text-[10px] text-carbon-500 uppercase tracking-wider mb-1.5 sm:mb-2">Historical Context</div>
-        <div className="flex flex-wrap gap-1">
+      {/* Top Control Bar */}
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-carbon-700">
+        {/* Play button */}
+        <button
+          onClick={togglePlay}
+          className={`
+            w-14 sm:w-16 h-10 sm:h-12 rounded-lg flex flex-col items-center justify-center
+            transition-all duration-200 border-2 font-bold text-xs
+            ${isPlaying
+              ? 'bg-signal-orange border-signal-orange text-carbon-900'
+              : 'bg-carbon-800 border-carbon-600 text-carbon-400 hover:border-carbon-400'}
+          `}
+        >
+          <span className="text-lg">{isPlaying ? '■' : '▶'}</span>
+          <span className="text-[9px]">{isPlaying ? 'STOP' : 'PLAY'}</span>
+        </button>
+
+        {/* f0 display */}
+        <div className="text-center">
+          <div className="text-2xl sm:text-3xl font-bold text-signal-orange">{f0}</div>
+          <div className="text-[9px] text-carbon-500 uppercase tracking-wider">Hz (Sa)</div>
+        </div>
+
+        {/* Master volume */}
+        <div className="w-20 sm:w-24">
+          <div className="text-[9px] text-carbon-500 uppercase tracking-wider mb-1 text-center">Master</div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={masterVolume}
+            onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+            className="w-full h-2 bg-carbon-700 rounded-full appearance-none cursor-pointer
+                       [&::-webkit-slider-thumb]:appearance-none
+                       [&::-webkit-slider-thumb]:w-4
+                       [&::-webkit-slider-thumb]:h-4
+                       [&::-webkit-slider-thumb]:rounded-full
+                       [&::-webkit-slider-thumb]:bg-signal-orange
+                       [&::-webkit-slider-thumb]:cursor-pointer"
+          />
+          <div className="text-[9px] text-carbon-400 text-center mt-0.5">{Math.round(masterVolume * 100)}%</div>
+        </div>
+      </div>
+
+      {/* Historical Context Tabs - Prominent! */}
+      <div className="mb-4">
+        <div className="text-[10px] text-carbon-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <span>🌍</span>
+          <span>Explore Historical Tuning Systems</span>
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
           {Object.entries(HISTORICAL_CONTEXTS).map(([key, ctx]) => (
             <button
               key={key}
               onClick={() => setHistoricalContext(key)}
               className={`
-                px-2 sm:px-2.5 py-1 text-[9px] sm:text-[10px] rounded border transition-all
+                p-2 sm:p-2.5 rounded-lg border-2 transition-all text-center
                 ${historicalContext === key
                   ? `${getContextColorClass(key, 'bg')} ${getContextColorClass(key, 'border')} ${getContextColorClass(key, 'text')}`
-                  : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500 active:border-carbon-400'}
+                  : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
               `}
             >
-              {ctx.label}
-              <span className="hidden sm:inline">{ctx.century && <span className="ml-1 opacity-60">({ctx.century})</span>}</span>
+              <div className="text-[10px] sm:text-xs font-bold">{ctx.label}</div>
+              {ctx.century && (
+                <div className="text-[8px] opacity-60 hidden sm:block">{ctx.century}</div>
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Context Description */}
+      {/* Context Info Panel */}
       <AnimatePresence mode="wait">
         {contextData.description && (
           <motion.div
             key={historicalContext}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className={`mb-4 p-3 rounded border ${getContextColorClass(historicalContext, 'bg')} ${getContextColorClass(historicalContext, 'border')}`}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`mb-4 rounded-lg border-2 overflow-hidden ${getContextColorClass(historicalContext, 'border')}`}
           >
-            <p className="text-xs text-carbon-300 leading-relaxed mb-2">{contextData.description}</p>
-            <p className={`text-[10px] ${getContextColorClass(historicalContext, 'text')} italic`}>{contextData.insight}</p>
+            {/* Context header */}
+            <div className={`px-3 py-2 ${getContextColorClass(historicalContext, 'bg')}`}>
+              <div className={`text-sm font-bold ${getContextColorClass(historicalContext, 'text')}`}>
+                {contextData.label} {contextData.century && `(${contextData.century})`}
+              </div>
+            </div>
+            {/* Description */}
+            <div className="p-3 bg-carbon-800/50">
+              <p className="text-xs text-carbon-300 leading-relaxed mb-2">{contextData.description}</p>
+              <p className={`text-[11px] ${getContextColorClass(historicalContext, 'text')} font-medium`}>
+                💡 {contextData.insight}
+              </p>
+            </div>
+            {/* Context-specific presets */}
+            {contextData.presets && mode === 'scale' && (
+              <div className={`px-3 py-2 border-t ${getContextColorClass(historicalContext, 'border')} bg-carbon-800/30`}>
+                <div className="text-[9px] text-carbon-500 uppercase tracking-wider mb-1.5">Try These</div>
+                <div className="flex gap-2 flex-wrap">
+                  {contextData.presets.map(preset => {
+                    const isActive = preset.voices.length === activeVoices.size &&
+                      preset.voices.every(v => activeVoices.has(v));
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => applyPreset(preset)}
+                        className={`
+                          px-3 py-1.5 text-[11px] rounded-lg border transition-all
+                          ${isActive
+                            ? `${getContextColorClass(historicalContext, 'bg')} ${getContextColorClass(historicalContext, 'border')} ${getContextColorClass(historicalContext, 'text')} font-bold`
+                            : 'bg-carbon-700 border-carbon-600 text-carbon-300 hover:border-carbon-400'}
+                        `}
+                        title={preset.desc}
+                      >
+                        {preset.label}
+                        <span className="ml-1 text-[9px] opacity-70">({preset.desc})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          {/* Mode toggle */}
-          <div className="flex rounded overflow-hidden border border-carbon-600">
-            <button
-              onClick={() => switchMode('scale')}
-              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs transition-all ${
-                mode === 'scale'
-                  ? 'bg-signal-orange text-carbon-900'
-                  : 'bg-carbon-800 text-carbon-400 hover:text-carbon-200 active:text-carbon-100'
-              }`}
-            >
-              Scale
-            </button>
-            <button
-              onClick={() => switchMode('chromatic')}
-              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs transition-all ${
-                mode === 'chromatic'
-                  ? 'bg-signal-coral text-carbon-900'
-                  : 'bg-carbon-800 text-carbon-400 hover:text-carbon-200 active:text-carbon-100'
-              }`}
-            >
-              Chromatic
-            </button>
-          </div>
-
-          {/* Label mode (scale only) - hidden on mobile */}
-          {mode === 'scale' && (
-            <div className="hidden sm:flex gap-1">
-              {LABEL_MODES.map(lm => (
-                <button
-                  key={lm.id}
-                  onClick={() => setLabelMode(lm.id)}
-                  className={`px-2 py-1 text-[10px] rounded transition-all ${
-                    labelMode === lm.id
-                      ? 'bg-carbon-700 text-carbon-200'
-                      : 'text-carbon-500 hover:text-carbon-300'
-                  }`}
-                >
-                  {lm.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* f0 display + power */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="text-[10px] sm:text-xs text-carbon-500">
-            f0: <span className="text-signal-orange">{f0} Hz</span>
-          </div>
-          <button
-            onClick={togglePlay}
-            className={`
-              w-12 sm:w-14 h-7 sm:h-8 rounded flex items-center justify-center gap-1
-              transition-all duration-200 border font-bold text-[10px] sm:text-xs
-              ${isPlaying
-                ? 'bg-signal-orange border-signal-orange text-carbon-900'
-                : 'bg-carbon-800 border-carbon-600 text-carbon-400 hover:border-carbon-400 active:border-carbon-300'}
-            `}
-          >
-            {isPlaying ? '■' : '▶'}
-            <span className="hidden sm:inline">{isPlaying ? 'STOP' : 'PLAY'}</span>
-          </button>
-        </div>
-      </div>
 
       {/* Mobile audio unlock prompt */}
       <AudioUnlockInline onUnlock={() => setAudioState('idle')} />
@@ -669,85 +701,13 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
       )}
 
       {/* Presets */}
-      <div className="mb-4">
-        {/* Context-specific presets (when context is selected and in scale mode) */}
-        {contextData.presets && mode === 'scale' && (
-          <div className="mb-3">
-            <div className={`text-[9px] uppercase tracking-wider mb-1.5 ${getContextColorClass(historicalContext, 'text')}`}>
-              {contextData.label} Presets
-            </div>
-            <div className="flex gap-1.5 flex-wrap">
-              {contextData.presets.map(preset => {
-                const isActive = preset.voices.length === activeVoices.size &&
-                  preset.voices.every(v => activeVoices.has(v));
-                return (
-                  <button
-                    key={preset.id}
-                    onClick={() => applyPreset(preset)}
-                    className={`
-                      px-2.5 py-1 text-[10px] rounded border transition-all
-                      ${isActive
-                        ? `${getContextColorClass(historicalContext, 'bg')} ${getContextColorClass(historicalContext, 'border')} ${getContextColorClass(historicalContext, 'text')}`
-                        : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
-                    `}
-                    title={preset.desc}
-                  >
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Standard presets */}
-        <div className="text-[9px] text-carbon-500 uppercase tracking-wider mb-1.5">
-          {contextData.presets && mode === 'scale' ? 'All Presets' : 'Presets'}
-        </div>
-        {mode === 'scale' ? (
-          <>
-            {/* Category tabs */}
-            <div className="flex gap-1 mb-2">
-              {Object.keys(SCALE_PRESETS).map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setPresetCategory(cat)}
-                  className={`px-2 py-0.5 text-[9px] uppercase tracking-wider rounded transition-all ${
-                    presetCategory === cat
-                      ? 'bg-carbon-700 text-carbon-200'
-                      : 'text-carbon-500 hover:text-carbon-300'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-            {/* Presets for selected category */}
-            <div className="flex gap-1.5 flex-wrap">
-              {SCALE_PRESETS[presetCategory].map(preset => {
-                const isActive = preset.voices.length === activeVoices.size &&
-                  preset.voices.every(v => activeVoices.has(v));
-                return (
-                  <button
-                    key={preset.id}
-                    onClick={() => applyPreset(preset)}
-                    className={`
-                      px-2.5 py-1 text-[10px] rounded border transition-all
-                      ${isActive
-                        ? 'bg-carbon-700 border-signal-orange text-signal-orange'
-                        : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
-                    `}
-                    title={preset.desc}
-                  >
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          <div className="flex gap-1.5 flex-wrap">
-            {CHROMATIC_PRESETS.map(preset => {
+      <div className="mb-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[9px] text-carbon-500 uppercase tracking-wider">
+            {mode === 'scale' ? 'Quick:' : 'Chords:'}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {(mode === 'scale' ? SCALE_PRESETS.basic : CHROMATIC_PRESETS).map(preset => {
               const isActive = preset.voices.length === activeVoices.size &&
                 preset.voices.every(v => activeVoices.has(v));
               return (
@@ -755,7 +715,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
                   key={preset.id}
                   onClick={() => applyPreset(preset)}
                   className={`
-                    px-2.5 py-1 text-[10px] rounded border transition-all
+                    px-2 py-0.5 text-[9px] rounded border transition-all
                     ${isActive
                       ? 'bg-carbon-700 border-signal-orange text-signal-orange'
                       : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500'}
@@ -767,7 +727,7 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
               );
             })}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Mixer faders */}
@@ -797,93 +757,89 @@ export default function DroneMixer({ scale = [], f0 = 165, initialContext = 'non
         </div>
       </div>
 
-      {/* Wave type + Master */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
-        {/* Waveform */}
-        <div className="flex-1">
-          <div className="text-[9px] sm:text-[10px] text-carbon-500 mb-1 sm:mb-1.5 uppercase tracking-wider">Wave</div>
-          <div className="flex gap-1 sm:gap-1.5">
-            {WAVE_TYPES.map(wave => (
-              <button
-                key={wave.type}
-                onClick={() => setWaveType(wave.type)}
-                className={`
-                  px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs rounded border transition-all flex-1
-                  ${waveType === wave.type
-                    ? 'bg-carbon-700 border-signal-coral text-signal-coral'
-                    : 'bg-carbon-800 border-carbon-700 text-carbon-400 hover:border-carbon-500 active:border-carbon-400'}
-                `}
-                title={wave.desc}
-              >
-                {wave.label}
-              </button>
-            ))}
+      {/* Bottom Controls Bar */}
+      <div className="flex items-center justify-between gap-3 pt-3 border-t border-carbon-700">
+        {/* Mode + Label toggle */}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded overflow-hidden border border-carbon-600">
+            <button
+              onClick={() => switchMode('scale')}
+              className={`px-2 py-1 text-[9px] transition-all ${
+                mode === 'scale'
+                  ? 'bg-signal-orange text-carbon-900'
+                  : 'bg-carbon-800 text-carbon-400'
+              }`}
+            >
+              Scale
+            </button>
+            <button
+              onClick={() => switchMode('chromatic')}
+              className={`px-2 py-1 text-[9px] transition-all ${
+                mode === 'chromatic'
+                  ? 'bg-signal-coral text-carbon-900'
+                  : 'bg-carbon-800 text-carbon-400'
+              }`}
+            >
+              Chromatic
+            </button>
           </div>
+
+          {/* Label mode (scale only) */}
+          {mode === 'scale' && (
+            <div className="hidden sm:flex gap-0.5">
+              {LABEL_MODES.map(lm => (
+                <button
+                  key={lm.id}
+                  onClick={() => setLabelMode(lm.id)}
+                  className={`px-1.5 py-0.5 text-[8px] rounded transition-all ${
+                    labelMode === lm.id
+                      ? 'bg-carbon-700 text-carbon-200'
+                      : 'text-carbon-500 hover:text-carbon-300'
+                  }`}
+                >
+                  {lm.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Master volume */}
-        <div className="w-full sm:w-32">
-          <div className="flex items-center justify-between mb-1 sm:mb-1.5">
-            <span className="text-[9px] sm:text-[10px] text-carbon-500 uppercase tracking-wider">Master</span>
-            <span className="text-[9px] sm:text-[10px] text-carbon-400">{Math.round(masterVolume * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={masterVolume}
-            onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
-            className="w-full h-2 bg-carbon-700 rounded-full appearance-none cursor-pointer
-                       [&::-webkit-slider-thumb]:appearance-none
-                       [&::-webkit-slider-thumb]:w-5
-                       [&::-webkit-slider-thumb]:h-5
-                       [&::-webkit-slider-thumb]:sm:w-4
-                       [&::-webkit-slider-thumb]:sm:h-4
-                       [&::-webkit-slider-thumb]:rounded-full
-                       [&::-webkit-slider-thumb]:bg-signal-orange
-                       [&::-webkit-slider-thumb]:cursor-pointer
-                       [&::-webkit-slider-thumb]:border-2
-                       [&::-webkit-slider-thumb]:border-carbon-900"
-          />
+        {/* Wave type */}
+        <div className="flex gap-1">
+          {WAVE_TYPES.map(wave => (
+            <button
+              key={wave.type}
+              onClick={() => setWaveType(wave.type)}
+              className={`
+                px-2 py-1 text-[9px] rounded border transition-all
+                ${waveType === wave.type
+                  ? 'bg-carbon-700 border-signal-coral text-signal-coral'
+                  : 'bg-carbon-800 border-carbon-700 text-carbon-500'}
+              `}
+              title={wave.desc}
+            >
+              {wave.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Now playing */}
+      {/* Now playing indicator */}
       <AnimatePresence>
         {isPlaying && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-carbon-700"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="mt-2 flex items-center gap-2"
           >
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-signal-orange animate-pulse flex-shrink-0" />
-              <span className="text-[9px] sm:text-[10px] text-carbon-400 truncate">
-                {Array.from(activeVoices).sort((a, b) => a - b).map(id =>
-                  `${getLabel(id)}`
-                ).join(' + ')}
-              </span>
-            </div>
+            <div className="w-2 h-2 rounded-full bg-signal-orange animate-pulse" />
+            <span className="text-[9px] text-carbon-400">
+              Playing: {Array.from(activeVoices).sort((a, b) => a - b).map(id => getLabel(id)).join(' + ')}
+            </span>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Mode description */}
-      <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-carbon-700">
-        <p className="text-[9px] sm:text-[10px] text-carbon-500 leading-relaxed">
-          {mode === 'scale'
-            ? `Scale: Just intonation from Sa (${f0} Hz). Pure ratios.`
-            : `Chromatic: 12 equal-tempered semitones from ${f0} Hz.`
-          }
-        </p>
-        {historicalContext !== 'none' && (
-          <p className={`text-[8px] sm:text-[9px] mt-1 ${getContextColorClass(historicalContext, 'text')}`}>
-            Context: {contextData.label}
-          </p>
-        )}
-      </div>
     </div>
   );
 }

@@ -7,7 +7,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext, subscribeToAudioState } from '../utils/mobileAudio';
+import { getAudioContext, subscribeToAudioState, unlockAudioSync } from '../utils/mobileAudio';
 import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Common harmonic combinations in Indian classical music
@@ -232,13 +232,18 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
     });
   }, [isPlaying, startOscillator, stopOscillator]);
 
-  // Start all active shrutis
-  const startAll = useCallback(async () => {
-    await initAudio();
-    for (const num of activeShrutis) {
-      await startOscillator(num);
-    }
-    setIsPlaying(true);
+  // Start all active shrutis - CRITICAL: Must call unlockAudioSync FIRST for Safari
+  const startAll = useCallback(() => {
+    // CRITICAL: Sync unlock first for Safari
+    unlockAudioSync();
+
+    (async () => {
+      await initAudio();
+      for (const num of activeShrutis) {
+        await startOscillator(num);
+      }
+      setIsPlaying(true);
+    })();
   }, [initAudio, activeShrutis, startOscillator]);
 
   // Stop all oscillators

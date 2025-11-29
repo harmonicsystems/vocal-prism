@@ -53,68 +53,110 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
       </div>
 
       {viewMode === 'chart' ? (
-        /* Visual chart */
-        <div className="relative h-48 bg-cream-50 rounded border border-carbon-100 p-4">
-          {/* Y-axis labels */}
-          <div className="absolute left-0 top-4 bottom-4 w-16 flex flex-col justify-between text-right pr-2">
-            <span className="font-mono text-xs text-carbon-400">{Math.round(maxHz)}</span>
-            <span className="font-mono text-xs text-carbon-400">{Math.round(maxHz / 2)}</span>
-            <span className="font-mono text-xs text-carbon-400">{displayOvertones[0]?.hz.toFixed(0)}</span>
-          </div>
+        <div className="relative bg-cream-50 rounded border border-carbon-100 p-4">
+          <svg
+            viewBox={`0 0 ${displayCount * 40 + 60} 200`}
+            className="w-full h-auto"
+            style={{ minHeight: '180px' }}
+          >
+            {/* Y-axis */}
+            <line x1="50" y1="20" x2="50" y2="160" stroke="#94a3b8" strokeWidth="1" />
 
-          {/* Chart area */}
-          <div className="ml-16 h-full flex items-end justify-around gap-1">
+            {/* Y-axis labels */}
+            <text x="45" y="25" textAnchor="end" fontSize="10" fill="#64748b" fontFamily="monospace">
+              {Math.round(maxHz)}
+            </text>
+            <text x="45" y="90" textAnchor="end" fontSize="10" fill="#64748b" fontFamily="monospace">
+              {Math.round(maxHz / 2)}
+            </text>
+            <text x="45" y="160" textAnchor="end" fontSize="10" fill="#64748b" fontFamily="monospace">
+              0
+            </text>
+
+            {/* Bars */}
             {displayOvertones.map((overtone, i) => {
-              const heightPercent = (overtone.hz / maxHz) * 100;
-              const opacity = 1 - (i * 0.04);
+              const barHeight = (overtone.hz / maxHz) * 140; // 140px max bar height
+              const barX = 60 + i * 35;
+              const barY = 160 - barHeight;
               const isOutOfTune = outOfTuneHarmonics.includes(overtone.harmonic);
+              const barColor = isOutOfTune ? '#f59e0b' : '#f97316';
+              const opacity = 1 - (i * 0.03);
 
               return (
-                <motion.div
-                  key={overtone.harmonic}
-                  className="flex flex-col items-center gap-1 flex-1"
-                  initial={{ height: 0 }}
-                  animate={{ height: 'auto' }}
-                  transition={{ delay: i * 0.05, duration: 0.2 }}
-                >
+                <g key={overtone.harmonic}>
                   {/* Bar */}
-                  <motion.div
-                    className={`w-full rounded-t relative group ${
-                      isOutOfTune ? 'bg-signal-amber' : 'bg-signal-orange'
-                    }`}
-                    style={{
-                      height: `${heightPercent}%`,
-                      opacity,
-                      minHeight: '4px'
-                    }}
-                    initial={{ scaleY: 0 }}
-                    animate={{ scaleY: 1 }}
-                    transition={{ delay: i * 0.05, duration: 0.2 }}
-                    whileHover={{ opacity: 1 }}
-                  >
-                    {/* Tooltip */}
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-carbon-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                      <div>{overtone.hzFormatted} Hz</div>
-                      <div className="text-carbon-400">{overtone.noteName}</div>
-                      {overtone.note && <div className="text-signal-amber text-[9px]">{overtone.note}</div>}
-                    </div>
-                  </motion.div>
+                  <motion.rect
+                    x={barX}
+                    y={barY}
+                    width="25"
+                    height={barHeight}
+                    fill={barColor}
+                    opacity={opacity}
+                    rx="2"
+                    initial={{ height: 0, y: 160 }}
+                    animate={{ height: barHeight, y: barY }}
+                    transition={{ delay: i * 0.05, duration: 0.3, ease: 'easeOut' }}
+                  />
 
-                  {/* Harmonic number */}
-                  <span className={`font-mono text-[10px] ${
-                    isOutOfTune ? 'text-signal-amber' : 'text-carbon-400'
-                  }`}>
-                    {overtone.harmonic}
-                  </span>
-                </motion.div>
+                  {/* Frequency label on bar */}
+                  <motion.text
+                    x={barX + 12.5}
+                    y={barY - 5}
+                    textAnchor="middle"
+                    fontSize="8"
+                    fill="#64748b"
+                    fontFamily="monospace"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.05 + 0.2 }}
+                  >
+                    {overtone.hz.toFixed(0)}
+                  </motion.text>
+
+                  {/* Harmonic number below */}
+                  <text
+                    x={barX + 12.5}
+                    y="175"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fill={isOutOfTune ? '#f59e0b' : '#64748b'}
+                    fontFamily="monospace"
+                    fontWeight="500"
+                  >
+                    H{overtone.harmonic}
+                  </text>
+
+                  {/* Note name inside bar if tall enough */}
+                  {barHeight > 30 && (
+                    <text
+                      x={barX + 12.5}
+                      y={barY + barHeight - 8}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fill="white"
+                      fontWeight="500"
+                    >
+                      {overtone.noteName}
+                    </text>
+                  )}
+                </g>
               );
             })}
-          </div>
 
-          {/* X-axis label */}
-          <div className="absolute bottom-0 left-16 right-0 text-center">
-            <span className="text-xs text-carbon-400">Harmonic</span>
-          </div>
+            {/* X-axis */}
+            <line x1="50" y1="160" x2={60 + displayCount * 35} y2="160" stroke="#94a3b8" strokeWidth="1" />
+
+            {/* X-axis label */}
+            <text
+              x={(60 + displayCount * 35) / 2 + 25}
+              y="195"
+              textAnchor="middle"
+              fontSize="11"
+              fill="#64748b"
+            >
+              Harmonic Number
+            </text>
+          </svg>
         </div>
       ) : (
         /* Data table */

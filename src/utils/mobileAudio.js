@@ -290,6 +290,41 @@ export function closeAudioContext() {
 }
 
 /**
+ * CRITICAL: Synchronous unlock function for Safari compatibility
+ *
+ * Safari requires resume() to be called in the DIRECT synchronous call stack
+ * of the user gesture. Even calling it inside an async function that gets
+ * called from the click handler doesn't work - Safari's gesture tracking
+ * doesn't follow through async boundaries.
+ *
+ * Call this FIRST in any onClick handler, BEFORE any awaits.
+ * Returns the AudioContext so you can chain further setup.
+ *
+ * Usage:
+ *   onClick={() => {
+ *     const ctx = unlockAudioSync();  // MUST be first, no await before this
+ *     // then do async stuff
+ *   }}
+ */
+export function unlockAudioSync() {
+  const ctx = ensureContext();
+  if (!ctx) return null;
+
+  // Call resume() SYNCHRONOUSLY - this is the critical part for Safari
+  if (ctx.state === 'suspended') {
+    ctx.resume(); // Fire and forget
+  }
+
+  // Also play unlock tone synchronously for Chrome Mobile
+  if (isMobile()) {
+    playUnlockToneSync(ctx);
+    unlockCount++;
+  }
+
+  return ctx;
+}
+
+/**
  * Warm up audio system - call early in app lifecycle
  * This creates the context but doesn't try to unlock
  */

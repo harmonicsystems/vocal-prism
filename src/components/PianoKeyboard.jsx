@@ -132,6 +132,7 @@ export default function PianoKeyboard({
         }}
       >
         {/* White keys */}
+        <div className="flex gap-px">
         {whiteKeys.map((key, i) => {
           const scaleData = getScaleData(key.note, key.octave);
           const isActive = !!scaleData;
@@ -144,7 +145,6 @@ export default function PianoKeyboard({
               className="relative flex-shrink-0 flex flex-col cursor-pointer"
               style={{
                 width: keyWidth,
-                marginLeft: i === 0 ? 0 : -1,
                 zIndex: isHovered ? 5 : 1
               }}
               onMouseEnter={() => setHoveredKey(key.fullNote)}
@@ -156,45 +156,41 @@ export default function PianoKeyboard({
               {/* The key itself */}
               <div
                 className={`
-                  relative flex-shrink-0 border rounded-b-md
+                  relative flex-shrink-0 rounded-b-md
                   flex flex-col items-center justify-end
                   transition-all duration-150
+                  border-l border-r border-b
                   ${isActive
                     ? isRoot
                       ? 'bg-signal-orange border-signal-orange shadow-lg shadow-signal-orange/30'
                       : 'bg-signal-coral border-signal-coral shadow-md shadow-signal-coral/20'
-                    : 'bg-white border-carbon-300 hover:bg-cream-100'
+                    : 'bg-white border-carbon-200 hover:bg-cream-100'
                   }
                 `}
                 style={{ height: keyHeight }}
               >
-                {/* Note label at bottom of key */}
+                {/* Full pitch name with octave at bottom of key */}
                 {showLabels && (
                   <div className={`
-                    absolute bottom-2 text-xs font-mono font-semibold
+                    absolute bottom-2 text-[10px] font-mono font-semibold
                     ${isActive ? 'text-white' : 'text-carbon-400'}
                   `}>
-                    {key.note}
+                    {key.fullNote}
                   </div>
-                )}
-
-                {/* Active indicator dot */}
-                {isActive && (
-                  <div className={`
-                    absolute top-3 w-2 h-2 rounded-full
-                    ${isRoot ? 'bg-white' : 'bg-white/80'}
-                  `} />
                 )}
               </div>
 
               {/* Labels below the key */}
               {isActive && (
-                <div className="mt-1 text-center">
+                <div className="mt-1 text-center space-y-0.5">
                   <div className="text-[10px] font-bold text-carbon-700">
                     {scaleData.svara}
                   </div>
+                  <div className="text-[9px] text-carbon-500">
+                    {scaleData.solfege}
+                  </div>
                   {showCents && (
-                    <div className={`text-[9px] font-mono ${
+                    <div className={`text-[8px] font-mono ${
                       Math.abs(scaleData.cents) < 5
                         ? 'text-carbon-400'
                         : 'text-signal-amber'
@@ -207,13 +203,14 @@ export default function PianoKeyboard({
             </motion.div>
           );
         })}
+        </div>
 
         {/* Black keys (positioned absolutely) */}
         {blackKeys.map((key, i) => {
           const scaleData = getScaleData(key.note, key.octave);
           const isActive = !!scaleData;
           const isRoot = scaleData?.isRoot;
-          const leftOffset = (key.position + 1) * keyWidth - (blackKeyWidth / 2) - 1;
+          const leftOffset = (key.position + 1) * keyWidth - (blackKeyWidth / 2);
           const isHovered = hoveredKey === key.fullNote;
 
           return (
@@ -242,15 +239,23 @@ export default function PianoKeyboard({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + i * 0.015 }}
             >
-              {/* Active indicator */}
-              {isActive && (
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white" />
-              )}
-
-              {/* Svara label on black key if active */}
-              {isActive && showLabels && (
-                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-white">
-                  {scaleData.svara}
+              {/* Labels on black key */}
+              {isActive && showLabels ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
+                  <div className="text-[7px] font-bold text-white">{scaleData.svara}</div>
+                  <div className="text-[6px] text-white/80">{scaleData.solfege}</div>
+                  <div className="text-[6px] font-mono text-white/70">{key.fullNote}</div>
+                  {showCents && (
+                    <div className={`text-[6px] font-mono ${
+                      Math.abs(scaleData.cents) < 5 ? 'text-white/60' : 'text-signal-amber'
+                    }`}>
+                      {scaleData.cents >= 0 ? '+' : ''}{scaleData.cents}¢
+                    </div>
+                  )}
+                </div>
+              ) : showLabels && (
+                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[6px] font-mono text-carbon-500">
+                  {key.fullNote}
                 </div>
               )}
             </motion.div>

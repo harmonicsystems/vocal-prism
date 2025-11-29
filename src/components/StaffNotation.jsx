@@ -71,7 +71,7 @@ function getOctaveLabel(clef) {
 export default function StaffNotation({
   scale = [],
   title = "Your Personalized Scale",
-  showSvara = true,
+  labelType = 'svara', // 'svara', 'solfege', or 'both'
   showCents = true
 }) {
   const containerRef = useRef(null);
@@ -88,25 +88,29 @@ export default function StaffNotation({
       return abcNote;
     });
 
-    // Build ABC string with whole notes
-    const notesLine = abcNotes.map((note, i) => {
-      return note + '4'; // Whole note
-    }).join(' ');
+    // Build ABC string with whole notes (L:1/1 means default is whole note)
+    const notesLine = abcNotes.join(' ');
 
-    // Svara names as lyrics (w: line in ABC)
-    const svaraLine = showSvara
-      ? `w: ${scale.map(s => s.svara).join(' ')}`
-      : '';
+    // Labels as lyrics (w: line in ABC)
+    const getLyricsLine = () => {
+      if (labelType === 'solfege') {
+        return `w: ${scale.map(s => s.solfege).join(' ')}`;
+      } else if (labelType === 'both') {
+        return `w: ${scale.map(s => `${s.svara}/${s.solfege}`).join(' ')}`;
+      }
+      // Default: svara
+      return `w: ${scale.map(s => s.svara).join(' ')}`;
+    };
+    const lyricsLine = getLyricsLine();
 
     const abc = `
 X:1
 T:${title}
-M:4/4
-L:1/4
-Q:1/4=60
+M:none
+L:1/1
 K:C clef=${clef}
 ${notesLine} |]
-${svaraLine}
+${lyricsLine}
 `.trim();
 
     // Render with ABCJS
@@ -121,7 +125,7 @@ ${svaraLine}
       scale: 1.1,
     });
 
-  }, [scale, title, showSvara]);
+  }, [scale, title, labelType]);
 
   if (scale.length === 0) {
     return (
@@ -152,12 +156,13 @@ ${svaraLine}
         style={{ minHeight: '150px' }}
       />
 
-      {/* Solfège + Hz + Cents row */}
-      <div className="grid grid-cols-8 gap-1 mt-3 px-2">
+      {/* Complementary label + Hz + Cents row */}
+      <div className={`grid gap-1 mt-3 px-2`} style={{ gridTemplateColumns: `repeat(${scale.length}, minmax(0, 1fr))` }}>
         {scale.map((note, i) => (
           <div key={i} className="text-center">
             <div className="font-mono text-xs text-carbon-600">
-              {note.solfege}
+              {/* Show complementary label: if staff shows svara, grid shows solfege and vice versa */}
+              {labelType === 'solfege' ? note.svara : note.solfege}
             </div>
             <div className="font-mono text-[10px] text-carbon-400">
               {note.hz.toFixed(1)}

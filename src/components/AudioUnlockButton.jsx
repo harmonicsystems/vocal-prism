@@ -13,7 +13,8 @@ import {
   isAudioReady,
   subscribeToAudioState,
   isMobileDevice,
-  getAudioState
+  getAudioState,
+  unlockAudioSync
 } from '../utils/mobileAudio';
 
 export default function AudioUnlockButton({ onUnlock, showAlways = false }) {
@@ -39,22 +40,30 @@ export default function AudioUnlockButton({ onUnlock, showAlways = false }) {
     setShowButton(shouldShow);
   }, [audioState, showAlways, dismissed]);
 
-  // Handle unlock
-  const handleUnlock = useCallback(async () => {
+  // Handle unlock - CRITICAL: Must call unlockAudioSync FIRST (synchronously)
+  // Safari requires resume() in direct call stack of user gesture
+  const handleUnlock = useCallback(() => {
+    // CRITICAL: Call sync unlock FIRST, before any async/state updates
+    // This must happen in the direct synchronous call stack of the click
+    unlockAudioSync();
+
     setIsUnlocking(true);
 
-    try {
-      const success = await forceUnlock();
+    // Now we can do async stuff
+    (async () => {
+      try {
+        const success = await forceUnlock();
 
-      if (success) {
-        setShowButton(false);
-        onUnlock?.();
+        if (success) {
+          setShowButton(false);
+          onUnlock?.();
+        }
+      } catch (e) {
+        console.error('Audio unlock failed:', e);
+      } finally {
+        setIsUnlocking(false);
       }
-    } catch (e) {
-      console.error('Audio unlock failed:', e);
-    } finally {
-      setIsUnlocking(false);
-    }
+    })();
   }, [onUnlock]);
 
   // Handle dismiss (user doesn't want audio)
@@ -168,16 +177,24 @@ export function AudioUnlockInline({ onUnlock }) {
     return unsubscribe;
   }, []);
 
-  const handleUnlock = useCallback(async () => {
+  // CRITICAL: Must call unlockAudioSync FIRST (synchronously) for Safari
+  const handleUnlock = useCallback(() => {
+    // Call sync unlock FIRST in the direct click call stack
+    unlockAudioSync();
+
     setIsUnlocking(true);
-    try {
-      const success = await forceUnlock();
-      if (success) {
-        onUnlock?.();
+
+    // Now do async stuff
+    (async () => {
+      try {
+        const success = await forceUnlock();
+        if (success) {
+          onUnlock?.();
+        }
+      } finally {
+        setIsUnlocking(false);
       }
-    } finally {
-      setIsUnlocking(false);
-    }
+    })();
   }, [onUnlock]);
 
   // Only show on mobile when audio isn't ready
