@@ -10,7 +10,7 @@ import About from './pages/About';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/prism/:f0" element={<Prism />} />
