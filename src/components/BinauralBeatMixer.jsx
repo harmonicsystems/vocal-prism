@@ -12,7 +12,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext } from '../utils/mobileAudio';
+import { getAudioContext, subscribeToAudioState } from '../utils/mobileAudio';
+import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Brainwave states with frequencies and descriptions
 const BRAINWAVE_STATES = {
@@ -87,12 +88,23 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
 
   // State
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioState, setAudioState] = useState('idle');
   const [selectedState, setSelectedState] = useState('theta');
   const [beatFrequency, setBeatFrequency] = useState(6);
   const [beatMode, setBeatMode] = useState('centered');
   const [volume, setVolume] = useState(0.5);
   const [waveType, setWaveType] = useState('sine');
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Subscribe to audio state changes
+  useEffect(() => {
+    const unsubscribe = subscribeToAudioState((state) => {
+      if (state === 'running' && audioState === 'waiting') {
+        setAudioState('idle');
+      }
+    });
+    return unsubscribe;
+  }, [audioState]);
 
   // Calculate left and right frequencies based on mode
   const getFrequencies = useCallback(() => {
@@ -123,7 +135,17 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
   // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
     const ctx = await getAudioContext();
-    if (!ctx || ctx.state !== 'running') return null;
+
+    if (!ctx) {
+      setAudioState('error');
+      return null;
+    }
+
+    // If context is suspended, needs user interaction
+    if (ctx.state === 'suspended') {
+      setAudioState('waiting');
+      return null;
+    }
 
     if (!audioContextRef.current || audioContextRef.current !== ctx) {
       audioContextRef.current = ctx;
@@ -148,6 +170,7 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
       rightPanRef.current.connect(masterGainRef.current);
     }
 
+    setAudioState('running');
     return ctx;
   }, [volume]);
 
@@ -283,6 +306,17 @@ export default function BinauralBeatMixer({ f0 = 165, brainwaveMap = {} }) {
           {isPlaying ? '■ STOP' : '▶ PLAY'}
         </button>
       </div>
+
+      {/* Mobile audio unlock prompt */}
+      <AudioUnlockInline onUnlock={() => setAudioState('idle')} />
+
+      {/* Audio state indicator */}
+      {audioState === 'waiting' && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-signal-amber/10 border border-signal-amber/30 text-signal-amber text-xs flex items-center gap-2">
+          <span>🔊</span>
+          <span>Tap "Enable Audio" above to use binaural beats</span>
+        </div>
+      )}
 
       {/* Brainwave state selector */}
       <div className="mb-4">

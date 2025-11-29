@@ -7,7 +7,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAudioContext } from '../utils/mobileAudio';
+import { getAudioContext, subscribeToAudioState } from '../utils/mobileAudio';
+import { AudioUnlockInline } from './AudioUnlockButton';
 
 // Common harmonic combinations in Indian classical music
 const HARMONY_PRESETS = [
@@ -119,9 +120,20 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   const [activeShrutis, setActiveShrutis] = useState(new Set([1])); // Start with Sa
   const [masterVolume, setMasterVolume] = useState(0.5);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioState, setAudioState] = useState('idle');
   const [waveType, setWaveType] = useState('sine');
   const [showAllShrutis, setShowAllShrutis] = useState(false);
   const [showFineTuning, setShowFineTuning] = useState(true);
+
+  // Subscribe to audio state changes
+  useEffect(() => {
+    const unsubscribe = subscribeToAudioState((state) => {
+      if (state === 'running' && audioState === 'waiting') {
+        setAudioState('idle');
+      }
+    });
+    return unsubscribe;
+  }, [audioState]);
 
   // Fine-tuning state: which shruti is selected for each tunable svara
   const [tunedShrutis, setTunedShrutis] = useState(() => {
@@ -141,7 +153,17 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
   // Initialize audio context with mobile-friendly unlocking
   const initAudio = useCallback(async () => {
     const ctx = await getAudioContext();
-    if (!ctx || ctx.state !== 'running') return null;
+
+    if (!ctx) {
+      setAudioState('error');
+      return null;
+    }
+
+    // If context is suspended, needs user interaction
+    if (ctx.state === 'suspended') {
+      setAudioState('waiting');
+      return null;
+    }
 
     if (!audioContextRef.current || audioContextRef.current !== ctx) {
       audioContextRef.current = ctx;
@@ -149,6 +171,8 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
       masterGainRef.current.gain.value = masterVolume * 0.4;
       masterGainRef.current.connect(ctx.destination);
     }
+
+    setAudioState('running');
     return ctx;
   }, [masterVolume]);
 
@@ -370,6 +394,17 @@ export default function ShrutiMixer({ shrutiData, f0 = 165 }) {
           {isPlaying ? '■ STOP' : '▶ PLAY'}
         </button>
       </div>
+
+      {/* Mobile audio unlock prompt */}
+      <AudioUnlockInline onUnlock={() => setAudioState('idle')} />
+
+      {/* Audio state indicator */}
+      {audioState === 'waiting' && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-signal-amber/10 border border-signal-amber/30 text-signal-amber text-xs flex items-center gap-2">
+          <span>🔊</span>
+          <span>Tap "Enable Audio" above to play shrutis</span>
+        </div>
+      )}
 
       {/* Harmony Presets */}
       <div className="mb-4">
