@@ -7,21 +7,23 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 
-// Circle of fifths order (clockwise from top)
-// Each position also stores enharmonic equivalents and both sharps/flats versions
+// Circle of Fifths - the standard 12 positions
+// Starting from C at top (12 o'clock), moving clockwise by perfect fifths
+// Sharp keys (right side): C→G→D→A→E→B→F#
+// Flat keys (left side): C←F←Bb←Eb←Ab←Db←Gb
 const CIRCLE_DATA = [
-  { position: 0, sharp: 'C', flat: 'C', major: 'C', minor: 'Am', accidentals: 0 },
-  { position: 1, sharp: 'G', flat: 'G', major: 'G', minor: 'Em', accidentals: 1 },
-  { position: 2, sharp: 'D', flat: 'D', major: 'D', minor: 'Bm', accidentals: 2 },
-  { position: 3, sharp: 'A', flat: 'A', major: 'A', minor: 'F#m', accidentals: 3 },
-  { position: 4, sharp: 'E', flat: 'E', major: 'E', minor: 'C#m', accidentals: 4 },
-  { position: 5, sharp: 'B', flat: 'B', major: 'B', minor: 'G#m', accidentals: 5 },
-  { position: 6, sharp: 'F#', flat: 'Gb', major: 'F#/Gb', minor: 'D#m/Ebm', accidentals: 6 },
-  { position: 7, sharp: 'C#', flat: 'Db', major: 'Db', minor: 'Bbm', accidentals: 5 },
-  { position: 8, sharp: 'G#', flat: 'Ab', major: 'Ab', minor: 'Fm', accidentals: 4 },
-  { position: 9, sharp: 'D#', flat: 'Eb', major: 'Eb', minor: 'Cm', accidentals: 3 },
-  { position: 10, sharp: 'A#', flat: 'Bb', major: 'Bb', minor: 'Gm', accidentals: 2 },
-  { position: 11, sharp: 'E#', flat: 'F', major: 'F', minor: 'Dm', accidentals: 1 },
+  { position: 0, note: 'C', enharmonic: null, minor: 'Am', sharps: 0, flats: 0 },
+  { position: 1, note: 'G', enharmonic: null, minor: 'Em', sharps: 1, flats: 0 },
+  { position: 2, note: 'D', enharmonic: null, minor: 'Bm', sharps: 2, flats: 0 },
+  { position: 3, note: 'A', enharmonic: null, minor: 'F#m', sharps: 3, flats: 0 },
+  { position: 4, note: 'E', enharmonic: null, minor: 'C#m', sharps: 4, flats: 0 },
+  { position: 5, note: 'B', enharmonic: 'Cb', minor: 'G#m', sharps: 5, flats: 7 },
+  { position: 6, note: 'F#', enharmonic: 'Gb', minor: 'D#m/Ebm', sharps: 6, flats: 6 },
+  { position: 7, note: 'Db', enharmonic: 'C#', minor: 'Bbm', sharps: 7, flats: 5 },
+  { position: 8, note: 'Ab', enharmonic: 'G#', minor: 'Fm', sharps: 8, flats: 4 },
+  { position: 9, note: 'Eb', enharmonic: 'D#', minor: 'Cm', sharps: 9, flats: 3 },
+  { position: 10, note: 'Bb', enharmonic: 'A#', minor: 'Gm', sharps: 10, flats: 2 },
+  { position: 11, note: 'F', enharmonic: null, minor: 'Dm', sharps: 0, flats: 1 },
 ];
 
 // Pythagorean ratios for just intonation circle of fifths
@@ -45,23 +47,31 @@ function extractPitchClass(note) {
   return note?.replace(/[0-9]/g, '') || '';
 }
 
+// Normalize note to standard spelling
+function normalizeNote(note) {
+  const normalized = {
+    'Cb': 'B', 'B#': 'C', 'E#': 'F', 'Fb': 'E',
+    'C#': 'Db', 'D#': 'Eb', 'F#': 'Gb', 'G#': 'Ab', 'A#': 'Bb',
+  };
+  return normalized[note] || note;
+}
+
 // Find position in circle for a note
-function findPosition(note, preferFlats) {
+function findPosition(note) {
   const pitchClass = extractPitchClass(note);
 
-  // Handle enharmonics
-  const normalizedNote = pitchClass
-    .replace('Cb', 'B')
-    .replace('E#', 'F')
-    .replace('B#', 'C')
-    .replace('Fb', 'E');
+  // Direct match first
+  const direct = CIRCLE_DATA.find(c =>
+    c.note === pitchClass || c.enharmonic === pitchClass
+  );
+  if (direct) return direct.position;
 
-  return CIRCLE_DATA.find(c =>
-    c.sharp === normalizedNote ||
-    c.flat === normalizedNote ||
-    c.sharp === pitchClass ||
-    c.flat === pitchClass
-  )?.position ?? -1;
+  // Try normalized
+  const normalized = normalizeNote(pitchClass);
+  const normalizedMatch = CIRCLE_DATA.find(c =>
+    c.note === normalized || c.enharmonic === normalized
+  );
+  return normalizedMatch?.position ?? -1;
 }
 
 // Color palette
@@ -93,8 +103,8 @@ export default function CircleOfFifths({
 
   // Find root position
   const rootPosition = useMemo(() => {
-    return findPosition(rootNote, preferFlats);
-  }, [rootNote, preferFlats]);
+    return findPosition(rootNote);
+  }, [rootNote]);
 
   // Build set of scale notes (pitch classes only)
   const scaleNotes = useMemo(() => {
@@ -141,18 +151,20 @@ export default function CircleOfFifths({
 
   // Check if note is in user's scale
   const isInScale = (position) => {
-    const note = CIRCLE_DATA[position];
-    return scaleNotes.has(note.sharp) || scaleNotes.has(note.flat);
+    const data = CIRCLE_DATA[position];
+    return scaleNotes.has(data.note) || (data.enharmonic && scaleNotes.has(data.enharmonic));
   };
 
   // Get display note name based on preference
   const getNoteName = (position) => {
-    const note = CIRCLE_DATA[position];
-    // At position 6, show both; otherwise prefer based on setting
-    if (position === 6) return preferFlats ? note.flat : note.sharp;
-    // For positions 7-11 (flat side), prefer flats
-    if (position >= 7 && position <= 11) return preferFlats ? note.flat : note.sharp;
-    return note.sharp;
+    const data = CIRCLE_DATA[position];
+    // Position 6 is the enharmonic pair F#/Gb
+    if (position === 6) return preferFlats ? 'Gb' : 'F#';
+    // For flat-side keys (positions 7-11), show enharmonic if preferring sharps
+    if (position >= 7 && position <= 10 && !preferFlats && data.enharmonic) {
+      return data.enharmonic;
+    }
+    return data.note;
   };
 
   return (
@@ -327,7 +339,10 @@ export default function CircleOfFifths({
                 fontSize="9"
                 fontFamily="system-ui, sans-serif"
               >
-                {i === 0 ? '' : i <= 6 ? `${item.accidentals}#` : `${item.accidentals}b`}
+                {i === 0 ? '' :
+                 i <= 5 ? `${item.sharps}♯` :
+                 i === 6 ? '6♯/6♭' :
+                 `${item.flats}♭`}
               </text>
             </motion.g>
           );
