@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+// Force cache bust by adding comment with timestamp: 2024-11-30-v3
 import {
   unlockAudioSync,
   isAudioReady,
@@ -19,7 +20,7 @@ import {
   isMobileDevice,
   getAudioState,
   getAudioDebugInfo
-} from '../utils/mobileAudio';
+} from '../utils/mobileAudio.js';
 
 /**
  * Full-screen overlay for first-time mobile unlock
@@ -32,8 +33,15 @@ export default function AudioUnlockButton({ onUnlock }) {
 
   // Check if we need to show overlay on mount
   useEffect(() => {
+    const mobile = isMobileDevice();
+    const ready = isAudioReady();
+    console.log('[AudioUnlock] Mount check - isMobile:', mobile, 'isAudioReady:', ready);
+    console.log('[AudioUnlock] Audio state:', getAudioState());
+    console.log('[AudioUnlock] Debug info:', getAudioDebugInfo());
+
     // Only show on mobile when audio isn't ready
-    if (isMobileDevice() && !isAudioReady()) {
+    if (mobile && !ready) {
+      console.log('[AudioUnlock] Showing overlay');
       setShowOverlay(true);
     }
   }, []);
@@ -54,11 +62,16 @@ export default function AudioUnlockButton({ onUnlock }) {
     const overlay = overlayRef.current;
     if (!overlay || !showOverlay) return;
 
-    const handleNativeClick = (e) => {
+    let unlocked = false;
+
+    const handleUnlock = (e) => {
+      // Prevent double-firing from touch + click
+      if (unlocked) return;
+      unlocked = true;
+
       // CRITICAL: This runs in the DIRECT native event call stack
       // No React batching, no async boundaries
-
-      console.log('[AudioUnlock] Native click detected, attempting unlock...');
+      console.log('[AudioUnlock] Native event detected:', e.type);
 
       // Call unlock IMMEDIATELY - this is the key
       unlockAudioSync();
@@ -75,13 +88,15 @@ export default function AudioUnlockButton({ onUnlock }) {
       e.stopPropagation();
     };
 
-    // Use multiple event types for maximum compatibility
-    overlay.addEventListener('click', handleNativeClick, { capture: true });
-    overlay.addEventListener('touchend', handleNativeClick, { capture: true, passive: false });
+    // TOUCHSTART is the earliest possible event in the gesture chain
+    // Safari is more likely to trust this than touchend
+    overlay.addEventListener('touchstart', handleUnlock, { capture: true, passive: false });
+    // Fallback for non-touch devices
+    overlay.addEventListener('click', handleUnlock, { capture: true });
 
     return () => {
-      overlay.removeEventListener('click', handleNativeClick, { capture: true });
-      overlay.removeEventListener('touchend', handleNativeClick, { capture: true });
+      overlay.removeEventListener('touchstart', handleUnlock, { capture: true });
+      overlay.removeEventListener('click', handleUnlock, { capture: true });
     };
   }, [showOverlay, onUnlock]);
 
@@ -90,9 +105,11 @@ export default function AudioUnlockButton({ onUnlock }) {
     return null;
   }
 
+  // Use a BUTTON element - iOS Safari may require interactive element for audio unlock
   return (
-    <div
+    <button
       ref={overlayRef}
+      type="button"
       style={{
         position: 'fixed',
         inset: 0,
@@ -105,7 +122,14 @@ export default function AudioUnlockButton({ onUnlock }) {
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         cursor: 'pointer',
-        touchAction: 'manipulation', // Prevents double-tap zoom
+        touchAction: 'manipulation',
+        border: 'none',
+        padding: 0,
+        margin: 0,
+        width: '100%',
+        height: '100%',
+        outline: 'none',
+        WebkitTapHighlightColor: 'transparent',
       }}
     >
       {/* Pulsing circle */}
@@ -119,6 +143,7 @@ export default function AudioUnlockButton({ onUnlock }) {
           alignItems: 'center',
           justifyContent: 'center',
           animation: 'pulse 2s ease-in-out infinite',
+          pointerEvents: 'none',
         }}
       >
         <div
@@ -131,25 +156,27 @@ export default function AudioUnlockButton({ onUnlock }) {
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 36,
+            pointerEvents: 'none',
           }}
         >
           🔊
         </div>
       </div>
 
-      <h2
+      <span
         style={{
           marginTop: 24,
           color: 'white',
           fontSize: 24,
           fontWeight: 600,
           textAlign: 'center',
+          pointerEvents: 'none',
         }}
       >
-        Tap Anywhere to Enable Audio
-      </h2>
+        Tap to Enable Audio
+      </span>
 
-      <p
+      <span
         style={{
           marginTop: 12,
           color: 'rgba(255, 255, 255, 0.6)',
@@ -157,10 +184,11 @@ export default function AudioUnlockButton({ onUnlock }) {
           textAlign: 'center',
           maxWidth: 280,
           lineHeight: 1.5,
+          pointerEvents: 'none',
         }}
       >
         Mobile browsers require a tap to enable sound playback
-      </p>
+      </span>
 
       {/* CSS animation */}
       <style>{`
@@ -169,7 +197,7 @@ export default function AudioUnlockButton({ onUnlock }) {
           50% { transform: scale(1.1); opacity: 0.8; }
         }
       `}</style>
-    </div>
+    </button>
   );
 }
 

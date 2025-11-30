@@ -307,27 +307,78 @@ export function closeAudioContext() {
  *   }}
  */
 export function unlockAudioSync() {
+  // VERSION MARKER - if you see this, code is updated
+  console.log('[MobileAudio] ===== UNLOCK v3 =====');
+
+  // On mobile, use the nuclear option
+  if (isMobile()) {
+    console.log('[MobileAudio] Mobile detected, starting unlock sequence');
+
+    // Close any existing context FIRST
+    if (sharedAudioContext) {
+      console.log('[MobileAudio] Destroying old context');
+      try { sharedAudioContext.close(); } catch (e) {}
+      sharedAudioContext = null;
+    }
+
+    // Create AudioContext FIRST (must be in gesture)
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    sharedAudioContext = new AudioCtx();
+    console.log('[MobileAudio] New context created, state:', sharedAudioContext.state);
+
+    // Set up state change listener
+    sharedAudioContext.onstatechange = () => {
+      console.log('[MobileAudio] !!! STATE CHANGED TO:', sharedAudioContext?.state);
+      notifyListeners();
+    };
+
+    // Call resume() IMMEDIATELY in the gesture
+    const resumePromise = sharedAudioContext.resume();
+    console.log('[MobileAudio] resume() called');
+
+    // Play oscillator immediately (Chrome needs this)
+    playUnlockToneSync(sharedAudioContext);
+    console.log('[MobileAudio] Oscillator started');
+
+    // ALSO try HTML5 Audio as backup
+    try {
+      const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+      audio.play().catch(() => {});
+    } catch (e) {}
+
+    unlockCount++;
+
+    // Log current state (may still be suspended, that's ok - check onstatechange)
+    console.log('[MobileAudio] Immediate state:', sharedAudioContext.state);
+
+    // Also check state after a tick
+    setTimeout(() => {
+      console.log('[MobileAudio] State after 100ms:', sharedAudioContext?.state);
+    }, 100);
+
+    return sharedAudioContext;
+  }
+
+  // Desktop path
   const ctx = ensureContext();
   if (!ctx) return null;
-
-  // Call resume() SYNCHRONOUSLY - this is the critical part for Safari
-  if (ctx.state === 'suspended') {
-    ctx.resume(); // Fire and forget
-  }
-
-  // Also play unlock tone synchronously for Chrome Mobile
-  if (isMobile()) {
-    playUnlockToneSync(ctx);
-    unlockCount++;
-  }
-
+  if (ctx.state === 'suspended') ctx.resume();
   return ctx;
 }
 
 /**
  * Warm up audio system - call early in app lifecycle
  * This creates the context but doesn't try to unlock
+ *
+ * NOTE: On mobile, we skip warmup because creating an AudioContext
+ * outside a user gesture can permanently taint it on some Safari versions.
  */
 export function warmupAudio() {
+  // Skip on mobile - context must be created fresh in user gesture
+  if (isMobile()) {
+    console.log('[MobileAudio] Skipping warmup on mobile device');
+    return;
+  }
   ensureContext();
 }
+// v3 Sat Nov 29 20:05:35 EST 2025
