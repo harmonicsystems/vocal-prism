@@ -2,13 +2,44 @@
  * OvertoneChart Component
  * Visual representation of the overtone series
  * Extended to support 16 harmonics with toggle
+ * NOW WITH AUDIO - click any harmonic to hear it!
  */
 
 import { useState } from 'react';
+import { playTone, playHarmonicSeries, stopAllTones } from '../utils/playTone';
 
 export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
   const [showExtended, setShowExtended] = useState(false);
   const [viewMode, setViewMode] = useState('chart'); // 'chart' or 'table'
+  const [playingHarmonic, setPlayingHarmonic] = useState(null);
+  const [isPlayingAll, setIsPlayingAll] = useState(false);
+
+  // Play a single harmonic
+  const handlePlayHarmonic = (overtone) => {
+    setPlayingHarmonic(overtone.harmonic);
+    playTone(overtone.hz, { duration: 1, type: 'sine' });
+    setTimeout(() => setPlayingHarmonic(null), 1000);
+  };
+
+  // Play all harmonics in sequence
+  const handlePlayAll = () => {
+    if (isPlayingAll) {
+      stopAllTones();
+      setIsPlayingAll(false);
+      return;
+    }
+
+    setIsPlayingAll(true);
+    const fundamental = overtones[0]?.hz || 100;
+    playHarmonicSeries(fundamental, displayCount, {
+      sequential: true,
+      delay: 0.4,
+      duration: 0.35
+    });
+
+    // Reset state after sequence completes
+    setTimeout(() => setIsPlayingAll(false), displayCount * 400 + 500);
+  };
 
   const displayCount = showExtended ? Math.min(maxHarmonics, overtones.length) : 8;
   const displayOvertones = overtones.slice(0, displayCount);
@@ -31,7 +62,7 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-2">
           <button
             onClick={() => setViewMode('chart')}
@@ -52,6 +83,16 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
             }`}
           >
             Table
+          </button>
+          <button
+            onClick={handlePlayAll}
+            className={`px-3 py-1 text-xs rounded transition-all ${
+              isPlayingAll
+                ? 'bg-signal-orange text-white'
+                : 'bg-signal-orange/20 text-signal-orange hover:bg-signal-orange/30'
+            }`}
+          >
+            {isPlayingAll ? '■ Stop' : '▶ Play All'}
           </button>
         </div>
         <button
@@ -151,9 +192,14 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
               const barY = bottomY - barHeight;
               const isOutOfTune = outOfTuneHarmonics.includes(overtone.harmonic);
               const barColor = isOutOfTune ? '#f59e0b' : '#f97316';
+              const isPlaying = playingHarmonic === overtone.harmonic;
 
               return (
-                <g key={overtone.harmonic}>
+                <g
+                  key={overtone.harmonic}
+                  onClick={() => handlePlayHarmonic(overtone)}
+                  style={{ cursor: 'pointer' }}
+                >
                   {/* Bar */}
                   <rect
                     x={barX}
@@ -162,7 +208,10 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
                     height={barHeight}
                     fill={barColor}
                     rx="3"
-                    opacity={0.9}
+                    opacity={isPlaying ? 1 : 0.9}
+                    stroke={isPlaying ? '#fff' : 'none'}
+                    strokeWidth={isPlaying ? 2 : 0}
+                    style={{ transition: 'all 0.15s ease' }}
                   />
 
                   {/* Frequency label above bar */}
@@ -224,13 +273,15 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
         <div className={`grid gap-2 ${showExtended ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-4'}`}>
           {displayOvertones.map((overtone) => {
             const isOutOfTune = outOfTuneHarmonics.includes(overtone.harmonic);
+            const isPlaying = playingHarmonic === overtone.harmonic;
 
             return (
-              <div
+              <button
                 key={overtone.harmonic}
-                className={`bg-cream-50 rounded p-2 border ${
+                onClick={() => handlePlayHarmonic(overtone)}
+                className={`bg-cream-50 rounded p-2 border text-left transition-all ${
                   isOutOfTune ? 'border-signal-amber/50' : 'border-carbon-100'
-                }`}
+                } ${isPlaying ? 'ring-2 ring-signal-orange scale-105' : 'hover:border-signal-orange/50'}`}
               >
                 <div className="flex items-baseline justify-between">
                   <span className={`font-mono text-xs ${isOutOfTune ? 'text-signal-amber' : 'text-carbon-400'}`}>
@@ -247,7 +298,7 @@ export default function OvertoneChart({ overtones, maxHarmonics = 16 }) {
                 {overtone.note && (
                   <div className="text-[9px] text-signal-amber mt-1">{overtone.note}</div>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>

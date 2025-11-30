@@ -1,15 +1,43 @@
 /**
  * Home Page
  * Landing with example gallery — the entry point
+ * Now with manual frequency input!
  */
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import VoiceCardMini from '../components/VoiceCardMini';
 import { Prism, Waveform } from '../components/Icons';
 import { EXAMPLES } from '../data/examples';
 
 export default function Home() {
+  const navigate = useNavigate();
+  const [customFreq, setCustomFreq] = useState(165);
+  const [inputValue, setInputValue] = useState('165');
+
+  const handleFreqChange = (value) => {
+    const num = parseFloat(value);
+    if (!isNaN(num) && num >= 50 && num <= 500) {
+      setCustomFreq(num);
+    }
+    setInputValue(value);
+  };
+
+  const handleExplore = () => {
+    navigate(`/prism/${Math.round(customFreq)}`);
+  };
+
+  // Get note name for frequency
+  const getNoteForFreq = (freq) => {
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const a4 = 440;
+    const semitones = 12 * Math.log2(freq / a4);
+    const noteIndex = Math.round(semitones + 9) % 12;
+    const octave = Math.floor((semitones + 9 + 48) / 12);
+    return `${noteNames[(noteIndex + 12) % 12]}${octave}`;
+  };
+
   return (
     <div className="min-h-screen bg-cream-100">
       {/* Header */}
@@ -69,6 +97,60 @@ export default function Home() {
                   transition={{ delay: 0.5 + i * 0.1, duration: 0.3 }}
                 />
               ))}
+            </div>
+          </motion.div>
+
+          {/* Manual Frequency Input */}
+          <motion.div
+            className="mt-12 max-w-md mx-auto"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.5 }}
+          >
+            <div className="bg-cream-50 border border-carbon-200 rounded-xl p-6">
+              <label className="block text-sm font-medium text-carbon-600 mb-3">
+                Enter your fundamental frequency
+              </label>
+
+              <div className="flex items-center gap-4 mb-4">
+                <input
+                  type="number"
+                  value={inputValue}
+                  onChange={(e) => handleFreqChange(e.target.value)}
+                  onBlur={() => setInputValue(String(customFreq))}
+                  min="50"
+                  max="500"
+                  step="1"
+                  className="w-28 px-3 py-2 border border-carbon-300 rounded-lg font-mono text-lg text-center focus:outline-none focus:ring-2 focus:ring-signal-orange/50"
+                />
+                <span className="text-carbon-500">Hz</span>
+                <span className="text-carbon-400">≈</span>
+                <span className="font-mono text-signal-orange font-semibold">
+                  {getNoteForFreq(customFreq)}
+                </span>
+              </div>
+
+              <input
+                type="range"
+                min="50"
+                max="500"
+                step="1"
+                value={customFreq}
+                onChange={(e) => handleFreqChange(e.target.value)}
+                className="w-full h-2 bg-carbon-200 rounded-lg appearance-none cursor-pointer accent-signal-orange mb-4"
+              />
+
+              <div className="flex justify-between text-xs text-carbon-400 mb-4">
+                <span>50 Hz (bass)</span>
+                <span>500 Hz (soprano)</span>
+              </div>
+
+              <button
+                onClick={handleExplore}
+                className="w-full py-3 bg-signal-orange text-white font-semibold rounded-lg hover:bg-signal-orange/90 transition-colors"
+              >
+                Explore {Math.round(customFreq)} Hz
+              </button>
             </div>
           </motion.div>
         </div>

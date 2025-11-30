@@ -2,10 +2,12 @@
  * CircleOfFifths Component
  * Clean visualization showing your personalized scale in the Circle of Fifths
  * Shows just intonation relationships based on your f0
+ * NOW WITH AUDIO - click any note to hear it relative to your root!
  */
 
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { playTone, playInterval } from '../utils/playTone';
 
 // Circle of Fifths - the standard 12 positions
 // Starting from C at top (12 o'clock), moving clockwise by perfect fifths
@@ -95,6 +97,30 @@ export default function CircleOfFifths({
   const [preferFlats, setPreferFlats] = useState(false);
   const [showMinor, setShowMinor] = useState(true);
   const [showRatios, setShowRatios] = useState(true);
+  const [playingPosition, setPlayingPosition] = useState(null);
+
+  // Play a note from the circle
+  const handlePlayNote = (position, isMinor = false) => {
+    setPlayingPosition(position);
+    const ratio = PYTHAGOREAN_RATIOS[position];
+
+    // Calculate frequency from the ratio
+    // Convert cents to frequency ratio: ratio = 2^(cents/1200)
+    const freqRatio = Math.pow(2, ratio.cents / 1200);
+    const noteFreq = f0 * freqRatio;
+
+    // For minor keys, play a minor third above the root of that key
+    if (isMinor) {
+      // Minor key is 3 semitones below its relative major
+      // Play the note then add minor third (6:5 ratio)
+      playInterval(noteFreq, 1.2, { sequential: true, delay: 0.25, duration: 0.6 });
+    } else {
+      // Play root and this note together to hear the interval
+      playInterval(f0, freqRatio, { sequential: false, duration: 0.8 });
+    }
+
+    setTimeout(() => setPlayingPosition(null), 800);
+  };
 
   const center = size / 2;
   const outerRadius = size / 2 - 25;
@@ -268,13 +294,16 @@ export default function CircleOfFifths({
           const inScale = isInScale(i);
           const noteName = getNoteName(i);
           const ratio = PYTHAGOREAN_RATIOS[i];
+          const isPlaying = playingPosition === i;
 
           return (
             <motion.g
               key={i}
               initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              animate={{ scale: isPlaying ? 1.15 : 1, opacity: 1 }}
               transition={{ delay: i * 0.04, type: 'spring', stiffness: 200 }}
+              onClick={() => handlePlayNote(i)}
+              style={{ cursor: 'pointer' }}
             >
               {/* In-scale indicator ring */}
               {inScale && !isRoot && (
@@ -352,13 +381,16 @@ export default function CircleOfFifths({
         {showMinor && CIRCLE_DATA.map((item, i) => {
           const pos = getPosition(i, minorRadius);
           const isRelativeMinor = i === rootPosition;
+          const isPlayingMinor = playingPosition === i;
 
           return (
             <motion.g
               key={`minor-${i}`}
               initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              animate={{ scale: isPlayingMinor ? 1.15 : 1, opacity: 1 }}
               transition={{ delay: 0.3 + i * 0.03 }}
+              onClick={() => handlePlayNote(i, true)}
+              style={{ cursor: 'pointer' }}
             >
               <circle
                 cx={pos.x}
@@ -374,6 +406,7 @@ export default function CircleOfFifths({
                 fill={isRelativeMinor ? 'white' : '#a1a1aa'}
                 fontSize="8"
                 fontFamily="system-ui, sans-serif"
+                style={{ pointerEvents: 'none' }}
               >
                 {item.minor.split('/')[0]}
               </text>
