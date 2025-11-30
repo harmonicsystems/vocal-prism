@@ -308,23 +308,48 @@ export function closeAudioContext() {
  */
 export function unlockAudioSync() {
   // VERSION MARKER - if you see this, code is updated
-  console.log('[MobileAudio] ===== UNLOCK v3 =====');
+  console.log('[MobileAudio] ===== UNLOCK v4 - NUCLEAR =====');
 
-  // On mobile, use the nuclear option
+  // On mobile, use the NUCLEAR option - AudioContext from audio element
   if (isMobile()) {
-    console.log('[MobileAudio] Mobile detected, starting unlock sequence');
+    console.log('[MobileAudio] Mobile detected, using nuclear unlock');
 
-    // Close any existing context FIRST
+    // Close any existing context
     if (sharedAudioContext) {
-      console.log('[MobileAudio] Destroying old context');
       try { sharedAudioContext.close(); } catch (e) {}
       sharedAudioContext = null;
     }
 
-    // Create AudioContext FIRST (must be in gesture)
+    // NUCLEAR APPROACH: Create Audio element FIRST, then derive AudioContext from it
+    // Safari trusts contexts created this way more than standalone AudioContext
+    try {
+      // Create and play a silent audio element
+      const audio = document.createElement('audio');
+      audio.setAttribute('playsinline', ''); // iOS requires this
+      audio.setAttribute('webkit-playsinline', '');
+
+      // Tiny silent WAV
+      audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+      // Play it - this is the key gesture unlock for Safari
+      const playPromise = audio.play();
+      console.log('[MobileAudio] Audio element play() called');
+
+      if (playPromise) {
+        playPromise.then(() => {
+          console.log('[MobileAudio] Audio element playing!');
+        }).catch(e => {
+          console.log('[MobileAudio] Audio element play failed:', e.message);
+        });
+      }
+    } catch (e) {
+      console.log('[MobileAudio] Audio element error:', e);
+    }
+
+    // NOW create AudioContext - Safari should trust us after audio.play()
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     sharedAudioContext = new AudioCtx();
-    console.log('[MobileAudio] New context created, state:', sharedAudioContext.state);
+    console.log('[MobileAudio] Context created, state:', sharedAudioContext.state);
 
     // Set up state change listener
     sharedAudioContext.onstatechange = () => {
@@ -332,29 +357,22 @@ export function unlockAudioSync() {
       notifyListeners();
     };
 
-    // Call resume() IMMEDIATELY in the gesture
-    const resumePromise = sharedAudioContext.resume();
-    console.log('[MobileAudio] resume() called');
+    // Resume immediately
+    sharedAudioContext.resume().then(() => {
+      console.log('[MobileAudio] resume() resolved, state:', sharedAudioContext?.state);
+    }).catch(e => {
+      console.log('[MobileAudio] resume() rejected:', e);
+    });
 
-    // Play oscillator immediately (Chrome needs this)
+    // Play oscillator for Chrome
     playUnlockToneSync(sharedAudioContext);
-    console.log('[MobileAudio] Oscillator started');
-
-    // ALSO try HTML5 Audio as backup
-    try {
-      const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-      audio.play().catch(() => {});
-    } catch (e) {}
 
     unlockCount++;
+    console.log('[MobileAudio] Unlock attempt complete, state:', sharedAudioContext.state);
 
-    // Log current state (may still be suspended, that's ok - check onstatechange)
-    console.log('[MobileAudio] Immediate state:', sharedAudioContext.state);
-
-    // Also check state after a tick
-    setTimeout(() => {
-      console.log('[MobileAudio] State after 100ms:', sharedAudioContext?.state);
-    }, 100);
+    // Check state after delays
+    setTimeout(() => console.log('[MobileAudio] 100ms state:', sharedAudioContext?.state), 100);
+    setTimeout(() => console.log('[MobileAudio] 500ms state:', sharedAudioContext?.state), 500);
 
     return sharedAudioContext;
   }
