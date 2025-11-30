@@ -3,7 +3,7 @@
  * For quick audio feedback throughout the app
  */
 
-import { getAudioContext, isAudioReady, unlockAudioSync } from './mobileAudio';
+import { unlockAudioSync } from './mobileAudio';
 
 // Active oscillators for cleanup
 const activeOscillators = new Map();
@@ -22,12 +22,8 @@ export function playTone(frequency, options = {}) {
     release = 0.3,
   } = options;
 
-  // Ensure audio is unlocked
-  if (!isAudioReady()) {
-    unlockAudioSync();
-  }
-
-  const ctx = getAudioContext();
+  // Get context synchronously (unlockAudioSync creates and returns it)
+  const ctx = unlockAudioSync();
   if (!ctx) return null;
 
   // Create nodes

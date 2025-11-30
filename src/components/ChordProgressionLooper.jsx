@@ -127,6 +127,14 @@ const PROGRESSIONS = [
     category: 'popular'
   },
   {
+    id: 'labamba',
+    name: 'La Bamba',
+    chords: ['I', 'IV', 'I', 'V'],
+    description: 'La Bamba, Twist and Shout, Louie Louie',
+    genre: 'Rock & Roll',
+    category: 'popular'
+  },
+  {
     id: 'optimistic',
     name: 'Uplifting',
     chords: ['I', 'IV', 'vi', 'V'],
@@ -354,6 +362,8 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
   const [waveType, setWaveType] = useState('triangle');
   const [beatsPerChord, setBeatsPerChord] = useState(4);
   const [beatCount, setBeatCount] = useState(0);
+  const [useVoiceLeading, setUseVoiceLeading] = useState(true);
+  const previousChordRef = useRef(null);
 
   const currentProgression = PROGRESSIONS.find(p => p.id === selectedProgression) || PROGRESSIONS[0];
   const filteredProgressions = PROGRESSIONS.filter(p => p.category === selectedCategory);
@@ -371,6 +381,73 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
       rootHz * Math.pow(2, interval / 12)
     );
   }, [f0]);
+
+  /**
+   * Apply voice leading to minimize movement from previous chord
+   * Returns chord frequencies arranged to minimize total voice movement
+   */
+  const applyVoiceLeading = useCallback((newFreqs, prevFreqs) => {
+    if (!prevFreqs || prevFreqs.length === 0) {
+      return newFreqs; // No previous chord, use root position
+    }
+
+    // Generate all inversions of the new chord (within a reasonable range)
+    const generateInversions = (freqs) => {
+      const inversions = [freqs]; // Root position
+      const sorted = [...freqs].sort((a, b) => a - b);
+
+      // For each inversion, move the lowest note up an octave
+      let current = [...sorted];
+      for (let i = 0; i < freqs.length - 1; i++) {
+        const lowest = current[0];
+        current = [...current.slice(1), lowest * 2];
+        inversions.push([...current]);
+      }
+
+      // Also try dropping the bass an octave (for fuller sound)
+      const droppedBass = [...sorted];
+      droppedBass[0] = droppedBass[0] / 2;
+      inversions.push(droppedBass);
+
+      return inversions;
+    };
+
+    // Calculate total voice movement for a given voicing
+    const calculateMovement = (voicing) => {
+      // Sort both by frequency for voice matching
+      const sortedNew = [...voicing].sort((a, b) => a - b);
+      const sortedPrev = [...prevFreqs].sort((a, b) => a - b);
+
+      let totalMovement = 0;
+      const minLen = Math.min(sortedNew.length, sortedPrev.length);
+
+      for (let i = 0; i < minLen; i++) {
+        // Calculate movement in semitones (log scale)
+        const semitones = Math.abs(12 * Math.log2(sortedNew[i] / sortedPrev[i]));
+        totalMovement += semitones;
+      }
+
+      // Penalize if voice counts differ
+      totalMovement += Math.abs(sortedNew.length - sortedPrev.length) * 6;
+
+      return totalMovement;
+    };
+
+    // Find inversion with minimum movement
+    const inversions = generateInversions(newFreqs);
+    let bestInversion = newFreqs;
+    let minMovement = Infinity;
+
+    for (const inv of inversions) {
+      const movement = calculateMovement(inv);
+      if (movement < minMovement) {
+        minMovement = movement;
+        bestInversion = inv;
+      }
+    }
+
+    return bestInversion;
+  }, []);
 
   // Initialize audio
   const initAudio = useCallback(async () => {
@@ -404,7 +481,15 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
     oscillatorsRef.current = [];
 
     // Get frequencies for new chord
-    const frequencies = getChordFrequencies(chordDef);
+    let frequencies = getChordFrequencies(chordDef);
+
+    // Apply voice leading if enabled
+    if (useVoiceLeading && previousChordRef.current) {
+      frequencies = applyVoiceLeading(frequencies, previousChordRef.current);
+    }
+
+    // Store for next chord's voice leading
+    previousChordRef.current = frequencies;
 
     // Create oscillators for each note
     frequencies.forEach((freq, i) => {
@@ -427,7 +512,7 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
 
       oscillatorsRef.current.push({ osc, gain });
     });
-  }, [getChordFrequencies, waveType]);
+  }, [getChordFrequencies, waveType, useVoiceLeading, applyVoiceLeading]);
 
   // Start the loop
   const startLoop = useCallback(() => {
@@ -484,6 +569,7 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
       });
     }
     oscillatorsRef.current = [];
+    previousChordRef.current = null; // Reset voice leading
     setIsPlaying(false);
     setCurrentChordIndex(0);
     setBeatCount(0);
@@ -772,6 +858,33 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
             ))}
           </div>
         </div>
+
+        {/* Voice leading toggle */}
+        <div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[10px] text-carbon-500 uppercase tracking-wider">
+                Voice Leading
+              </div>
+              <div className="text-[9px] text-carbon-600 mt-0.5">
+                Smooth chord transitions
+              </div>
+            </div>
+            <button
+              onClick={() => setUseVoiceLeading(!useVoiceLeading)}
+              className={`
+                relative w-11 h-6 rounded-full transition-colors duration-200
+                ${useVoiceLeading ? 'bg-signal-orange' : 'bg-carbon-700'}
+              `}
+            >
+              <motion.div
+                className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                animate={{ x: useVoiceLeading ? 20 : 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Playing indicator */}
@@ -801,6 +914,9 @@ export default function ChordProgressionLooper({ f0 = 165 }) {
             <p>Roman numerals represent chords built on each scale degree. Uppercase = major, lowercase = minor.</p>
             <p>I = root, IV = fourth, V = fifth. These three chords form the backbone of Western music.</p>
             <p>The I-V-vi-IV progression (used in countless pop hits) works because it cycles through tension and resolution.</p>
+            <p className="mt-2 text-signal-orange/70">
+              <strong>Voice leading:</strong> When enabled, each chord uses inversions that minimize voice movement from the previous chord, creating smoother harmonic flow.
+            </p>
           </div>
         </details>
       </div>
